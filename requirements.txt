@@ -1,0 +1,13 @@
+langgraph
+langchain
+langchain-google-genai
+google-generativeai
+scikit-learn
+xgboost
+streamlit
+beautifulsoup4
+pandas
+numpy
+joblib
+python-dotenv
+pydantic
