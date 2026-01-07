@@ -11,3 +11,4 @@ class GraphState(TypedDict):
     features: PropertyFeatures
     user_input_url: Optional[str]
     prediction_result: Optional[float]
+    unknown_fields: List[str]  # Track fields user explicitly doesn't know

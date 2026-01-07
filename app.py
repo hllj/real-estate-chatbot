@@ -14,6 +14,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "features" not in st.session_state:
     st.session_state.features = PropertyFeatures()
+if "unknown_fields" not in st.session_state:
+    st.session_state.unknown_fields = []
 if "graph" not in st.session_state:
     st.session_state.graph = create_graph()
 
@@ -25,10 +27,16 @@ with st.sidebar:
         st.json(features_dict)
     else:
         st.write("Chưa có thông tin.")
-        
+
+    # Display unknown fields
+    if st.session_state.unknown_fields:
+        st.header("Thông tin không rõ")
+        st.write(", ".join(st.session_state.unknown_fields))
+
     if st.button("Làm mới cuộc trò chuyện"):
         st.session_state.messages = []
         st.session_state.features = PropertyFeatures()
+        st.session_state.unknown_fields = []
         st.rerun()
 
 # Display Chat History
@@ -52,17 +60,19 @@ if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở 
     # Prepare state
     initial_state = {
         "messages": st.session_state.messages,
-        "features": st.session_state.features
+        "features": st.session_state.features,
+        "unknown_fields": st.session_state.unknown_fields
     }
-    
+
     # Run graph
     with st.spinner("Đang xử lý..."):
         try:
             response = st.session_state.graph.invoke(initial_state)
-            
+
             # Update state
             st.session_state.messages = response['messages']
             st.session_state.features = response.get('features', st.session_state.features)
+            st.session_state.unknown_fields = response.get('unknown_fields', st.session_state.unknown_fields)
             
             # Display AI response
             last_message = st.session_state.messages[-1]
