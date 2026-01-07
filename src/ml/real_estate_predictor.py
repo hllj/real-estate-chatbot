@@ -495,3 +495,71 @@ class PricePredictor:
 
         print(f"Final prediction result: {result:,.0f} VND")
         return result
+
+    def predict_with_confidence(self, features: PropertyFeatures) -> Dict[str, Any]:
+        """
+        Predict price with confidence interval using the trained model, with fallback to heuristic.
+
+        Args:
+            features: PropertyFeatures object
+
+        Returns:
+            Dictionary with predicted price, confidence interval, and feature info.
+            Returns error info if prediction fails.
+        """
+        print(f"PricePredictor.predict_with_confidence called for area: {features.area_name}")
+
+        # Basic validation: need at least area_name and size info
+        if not features.area_name:
+            print("Prediction skipped: missing area_name")
+            return {"predicted_price": None, "error": "Thiếu thông tin vị trí (quận/huyện)"}
+
+        has_size = (
+            features.size is not None or
+            features.living_size is not None or
+            (features.width is not None and features.length is not None)
+        )
+
+        if not has_size:
+            print("Prediction skipped: missing size information")
+            return {"predicted_price": None, "error": "Thiếu thông tin diện tích"}
+
+        # Use fallback if model couldn't be loaded
+        if self._use_fallback:
+            print("Using fallback mode (trained model not available)")
+            fallback_price = self._fallback_predict(features)
+            return {
+                "predicted_price": fallback_price,
+                "log_price": None,
+                "confidence_interval_95": None,
+                "features_used": {
+                    "has_coordinates": features.latitude is not None and features.longitude is not None,
+                    "has_size": True,
+                    "area_name": features.area_name,
+                },
+                "is_fallback": True,
+            }
+
+        # Try trained model prediction with confidence
+        print("Attempting prediction with confidence using trained model...")
+        result = self._predictor.predict_with_confidence(features)
+
+        # If model prediction fails, use fallback
+        if result.get("predicted_price") is None:
+            print("Trained model prediction failed, falling back to heuristic")
+            fallback_price = self._fallback_predict(features)
+            return {
+                "predicted_price": fallback_price,
+                "log_price": None,
+                "confidence_interval_95": None,
+                "features_used": {
+                    "has_coordinates": features.latitude is not None and features.longitude is not None,
+                    "has_size": True,
+                    "area_name": features.area_name,
+                },
+                "is_fallback": True,
+            }
+
+        result["is_fallback"] = False
+        print(f"Final prediction with confidence: {result.get('predicted_price', 0):,.0f} VND")
+        return result

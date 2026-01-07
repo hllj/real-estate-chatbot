@@ -367,14 +367,16 @@ def validate_and_normalize_features(
 def predict_price(state: GraphState) -> Dict[str, Any]:
     """
     Node dự đoán giá nếu đủ thông tin quan trọng.
+    Sử dụng predict_with_confidence() để có thêm khoảng tin cậy 95%.
     """
     features = state.get('features', PropertyFeatures())
 
     # Basic check: needs at least area and size (or other dims) to predict
     if features.area_name and (features.size or (features.width and features.length) or features.living_size):
         predictor = PricePredictor()
-        price = predictor.predict(features)
-        return {"prediction_result": price}
+        # Sử dụng predict_with_confidence để có thêm khoảng tin cậy
+        prediction_result = predictor.predict_with_confidence(features)
+        return {"prediction_result": prediction_result}
 
     return {"prediction_result": None}
 
@@ -391,7 +393,21 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
 
     # Add context about current state to the system prompt
     status_msg = f"Hiện tại tôi đã có các thông tin sau: {features.model_dump(exclude_none=True)}"
-    if prediction:
+    if prediction and isinstance(prediction, dict) and prediction.get("predicted_price"):
+        price = prediction["predicted_price"]
+        status_msg += f"\nĐã có dự đoán giá: {price:,.0f} VNĐ."
+        
+        # Show confidence interval if available
+        confidence = prediction.get("confidence_interval_95")
+        if confidence and len(confidence) == 2:
+            lower, upper = confidence
+            status_msg += f"\nKhoảng tin cậy 95%: {lower:,.0f} - {upper:,.0f} VNĐ."
+        
+        # Indicate if using fallback model
+        if prediction.get("is_fallback"):
+            status_msg += "\n(Lưu ý: Sử dụng mô hình dự báo thay thế do mô hình chính không khả dụng.)"
+    elif prediction and isinstance(prediction, (int, float)):
+        # Backward compatibility for old format
         status_msg += f"\nĐã có dự đoán giá: {prediction:,.0f} VNĐ."
     else:
         status_msg += "\nChưa đủ thông tin để dự đoán giá (Cần ít nhất Quận/Huyện và Diện tích)."
