@@ -76,7 +76,7 @@ Lưu ý:
 *   Nếu người dùng đưa link, hãy nói rằng bạn đã trích xuất thông tin từ link đó.
 *   Nếu bạn đã có dự đoán giá, hãy thông báo cho người dùng và giải thích ngắn gọn tại sao có giá đó.
 *   Luôn sử dụng đơn vị diện tích là m2 và tiền tệ là VNĐ (Ví dụ: 5 tỷ, 5.5 tỷ).
-*   Đừng hỏi dồn dập tất cả cùng lúc. Hãy hỏi tự nhiên, ưu tiên Vị trí và Loại bất động sản trước.
+*   Đừng hỏi dồn dập tất cả cùng lúc, chỉ từ 1-2 câu hỏi một lúc. Hãy hỏi tự nhiên, ưu tiên Vị trí và Loại bất động sản trước.
 *   Khi hỏi người dùng về thông tin, hãy gợi ý các lựa chọn hợp lệ để họ dễ trả lời.
 *   Hãy đưa ra đầy đủ các lựa chọn có thể có của mỗi trường dữ liệu mà bạn có.
 
@@ -399,10 +399,10 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
         status_msg += f"\nĐã có dự đoán giá: {price:,.0f} VNĐ."
         
         # Show confidence interval if available
-        confidence = prediction.get("confidence_interval_95")
+        confidence = prediction.get("confidence_interval_90")
         if confidence and len(confidence) == 2:
             lower, upper = confidence
-            status_msg += f"\nKhoảng tin cậy 95%: {lower:,.0f} - {upper:,.0f} VNĐ."
+            status_msg += f"\nKhoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} VNĐ."
         
         # Indicate if using fallback model
         if prediction.get("is_fallback"):

@@ -10,7 +10,7 @@ class PredictionResult(TypedDict, total=False):
     """
     predicted_price: Optional[float]
     log_price: Optional[float]
-    confidence_interval_95: Optional[Tuple[float, float]]  # (lower, upper)
+    confidence_interval_90: Optional[Tuple[float, float]]  # (lower, upper) - 90% CI from tree estimators
     features_used: Optional[Dict[str, Any]]
     error: Optional[str]
 

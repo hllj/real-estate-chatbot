@@ -12,6 +12,7 @@ from typing import Dict, Optional, Tuple, Any
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 
 # Set up logger for this module
@@ -308,18 +309,40 @@ class RealEstatePricePredictor:
             log_price = self.model.predict(df)[0]
             price = 10 ** log_price
 
-            # Estimate confidence interval using typical model RMSE
-            # (from training: ~0.25 log units)
-            rmse_log = RMSE_LOG
-            lower = 10 ** (log_price - 1.96 * rmse_log)
-            upper = 10 ** (log_price + 1.96 * rmse_log)
+            # Get the pipeline and model
+            pipeline = self.model
+            model = pipeline.named_steps.get("model") if hasattr(pipeline, "named_steps") else pipeline
 
-            print(f"Prediction with confidence: {price:,.0f} VND (95% CI: {lower:,.0f} - {upper:,.0f})")
+            # Try to compute confidence interval from ensemble estimators
+            confidence_lower = None
+            confidence_upper = None
+
+            if hasattr(model, 'estimators_'):
+                # Ensemble model (Random Forest, Gradient Boosting, etc.)
+                # Get predictions from each individual tree/estimator
+                tree_predictions = []
+                preprocessed_X = pipeline.named_steps['preprocessor'].transform(df)
+
+                for estimator in model.estimators_:
+                    pred = estimator.predict(preprocessed_X)[0]
+                    tree_predictions.append(10 ** pred)  # Convert from log10
+
+                confidence_lower = float(np.percentile(tree_predictions, 5))
+                confidence_upper = float(np.percentile(tree_predictions, 95))
+                confidence_interval = (confidence_lower, confidence_upper)
+                print(f"Prediction with confidence (from {len(model.estimators_)} estimators): {price:,.0f} VND (90% CI: {confidence_lower:,.0f} - {confidence_upper:,.0f})")
+            else:
+                # Fallback: Estimate confidence interval using typical model RMSE
+                rmse_log = RMSE_LOG
+                confidence_lower = float(10 ** (log_price - 1.96 * rmse_log))
+                confidence_upper = float(10 ** (log_price + 1.96 * rmse_log))
+                confidence_interval = (confidence_lower, confidence_upper)
+                print(f"Prediction with confidence (RMSE-based): {price:,.0f} VND (95% CI: {confidence_lower:,.0f} - {confidence_upper:,.0f})")
 
             return {
                 "predicted_price": float(price),
                 "log_price": float(log_price),
-                "confidence_interval_95": (float(lower), float(upper)),
+                "confidence_interval_90": confidence_interval,
                 "features_used": {
                     "has_coordinates": features.latitude is not None and features.longitude is not None,
                     "has_size": features.size is not None or features.living_size is not None or (features.width and features.length),
@@ -531,7 +554,7 @@ class PricePredictor:
             return {
                 "predicted_price": fallback_price,
                 "log_price": None,
-                "confidence_interval_95": None,
+                "confidence_interval_90": None,
                 "features_used": {
                     "has_coordinates": features.latitude is not None and features.longitude is not None,
                     "has_size": True,
@@ -551,7 +574,7 @@ class PricePredictor:
             return {
                 "predicted_price": fallback_price,
                 "log_price": None,
-                "confidence_interval_95": None,
+                "confidence_interval_90": None,
                 "features_used": {
                     "has_coordinates": features.latitude is not None and features.longitude is not None,
                     "has_size": True,
