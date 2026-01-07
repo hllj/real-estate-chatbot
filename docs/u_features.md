@@ -1,30 +1,37 @@
-# List of fetures
+# User Collected Features
 
-0 area_name  
-1 category_name  
-2 floornumber  
-3 is_main_street  
-4 floors  
-5 length  
-6 living_size  
-7 width  
-8 longitude  
-9 latitude  
-10 apartment_type_name  
-11 property_legal_document_status  
-12 rooms_count  
-13 toilets_count  
-14 furnishing_sell_status  
-15 balconydirection_name  
-16 direction_name  
-17 house_type_name  
-18 commercial_type_name  
-19 land_type_name  
-20 property_status_name  
-21 size
+This document outlines all feature data points collected from users for property price prediction, based on the codebase definitions.
 
-# Unique values for some features
+## Feature Definitions
 
+| Feature Name | Type | Description |
+|:---|:---|:---|
+| `area_name` | String (Category) | Tên quận/huyện (ví dụ: Quận 1, Tp Thủ Đức) |
+| `longitude` | Float | Kinh độ |
+| `latitude` | Float | Vĩ độ |
+| `is_main_street` | Boolean | Là nhà mặt phố/mặt tiền hay không |
+| `category_name` | String (Category) | Danh mục (ví dụ: Căn hộ/Chung cư, Nhà ở, Đất) |
+| `house_type_name` | String (Category) | Loại nhà (ví dụ: Nhà biệt thự, Nhà phố liền kề) |
+| `apartment_type_name` | String (Category) | Loại chung cư (ví dụ: Chung cư, Penthouse) |
+| `commercial_type_name` | String (Category) | Loại văn phòng/thương mại |
+| `land_type_name` | String (Category) | Loại đất |
+| `size` | Float | Diện tích đất/sử dụng (m2) |
+| `living_size` | Float | Diện tích sử dụng thực tế (m2) |
+| `width` | Float | Chiều ngang (m) |
+| `length` | Float | Chiều dài (m) |
+| `floors` | Integer | Tổng số tầng |
+| `floornumber` | Integer | Tầng số bao nhiêu (nếu là chung cư) |
+| `rooms_count` | Integer | Số phòng ngủ |
+| `toilets_count` | Integer | Số phòng vệ sinh |
+| `direction_name` | String (Category) | Hướng nhà (Đông, Tây, Nam, Bắc...) |
+| `balconydirection_name` | String (Category) | Hướng ban công |
+| `furnishing_sell_status` | String (Category) | Tình trạng nội thất (Nội thất đầy đủ, Thô...) |
+| `property_legal_document_status` | String (Category) | Tình trạng pháp lý (Sổ hồng, Hợp đồng...) |
+| `property_status_name` | String (Category) | Tình trạng bàn giao dự án |
+
+## Valid Values for Categorical Features
+
+```json
 {
     "area_name": [
         "Thành phố Thủ Đức",
@@ -158,3 +165,4 @@
         "Không có thông tin"
     ]
 }
+```
