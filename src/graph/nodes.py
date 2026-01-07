@@ -2,7 +2,7 @@ import os
 import re
 from typing import Dict, Any, List, Tuple
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain_core.output_parsers.openai_functions import PydanticOutputFunctionsParser
 from dotenv import load_dotenv
@@ -11,11 +11,16 @@ from src.graph.state import GraphState
 from src.models import PropertyFeatures, VALID_VALUES
 from src.ml.placeholder_model import PricePredictor
 from src.utils.scraper import fetch_property_details
+from src.tools.geocoding import get_coordinates
 
 load_dotenv()
 
 # Setup LLM
 llm = ChatGoogleGenerativeAI(model=os.environ["GEMINI_MODEL"], temperature=0, convert_system_message_to_human=True)
+
+# Setup LLM with tools for geocoding
+tools = [get_coordinates]
+llm_with_tools = llm.bind_tools(tools)
 
 # Format valid values for prompts
 def format_valid_values_for_prompt() -> str:
@@ -38,8 +43,7 @@ Mục tiêu của bạn là thu thập đầy đủ các thông tin sau để c�
 
 1.  **Vị trí (Quan trọng nhất):**
     *   Quận/Huyện (`area_name`) - Chỉ chấp nhận các quận/huyện tại TP.HCM:
-        {', '.join(VALID_VALUES['area_name'])}
-    *   Tên đường, phường (nếu có để xác định vị trí chính xác hơn). Những thông tin này và Quận / Huyện được sử dụng để tính longitude và latitude nội bộ.
+        {', '.join(VALID_VALUES['area_name'])}. Những thông tin này được sử dụng để tính longitude và latitude nội bộ. Nếu được hãy hỏi người dùng về tên đường, ghi nhận thêm nếu có tên đường, phường nếu có. Sử dụng tool get_coordinates.
     *   Đặc điểm vị trí: Mặt tiền đường lớn (`is_main_street`) hay hẻm?
 
 2.  **Loại Bất Động Sản:**
@@ -378,9 +382,10 @@ def predict_price(state: GraphState) -> Dict[str, Any]:
 def chatbot(state: GraphState) -> Dict[str, Any]:
     """
     Node sinh câu trả lời cho người dùng.
+    Hỗ trợ tool calling để lấy tọa độ từ địa chỉ.
     """
     messages = state['messages']
-    features = state.get('features')
+    features = state.get('features', PropertyFeatures())
     prediction = state.get('prediction_result')
     unknown_fields = state.get('unknown_fields', [])
 
@@ -418,11 +423,56 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
         unknown_names = [field_names_vn.get(f, f) for f in unknown_fields]
         status_msg += f"\n\n**CÁC THÔNG TIN NGƯỜI DÙNG ĐÃ NÓI KHÔNG BIẾT (KHÔNG HỎI LẠI):** {', '.join(unknown_names)}"
 
+    # Add tool usage instruction
+    tool_instruction = """
+**CÔNG CỤ TÌM TỌA ĐỘ:**
+Bạn có thể sử dụng công cụ `get_coordinates` để tìm tọa độ (kinh độ, vĩ độ) từ địa chỉ.
+Sử dụng công cụ này khi:
+- Người dùng cung cấp địa chỉ cụ thể (số nhà, tên đường, phường)
+- Cần xác định vị trí chính xác của bất động sản
+- Chưa có thông tin longitude/latitude trong features
+
+Ví dụ địa chỉ: "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM"
+"""
+
     generation_prompt = [
         SystemMessage(content=SYSTEM_PROMPT),
         SystemMessage(content=status_msg),
+        SystemMessage(content=tool_instruction),
     ] + messages
 
-    response = llm.invoke(generation_prompt)
+    # Use LLM with tools
+    response = llm_with_tools.invoke(generation_prompt)
 
-    return {"messages": [response]}
+    # Handle tool calls if any
+    updated_features = features.model_copy()
+    if response.tool_calls:
+        tool_messages = []
+        for tool_call in response.tool_calls:
+            if tool_call["name"] == "get_coordinates":
+                # Execute the geocoding tool
+                result = get_coordinates.invoke(tool_call["args"])
+
+                # Update features with coordinates if successful
+                if result.get("success"):
+                    updated_features.latitude = result.get("latitude")
+                    updated_features.longitude = result.get("longitude")
+
+                # Create tool message with result
+                tool_messages.append(
+                    ToolMessage(
+                        content=str(result),
+                        tool_call_id=tool_call["id"]
+                    )
+                )
+
+        # If there were tool calls, get final response with tool results
+        if tool_messages:
+            final_prompt = generation_prompt + [response] + tool_messages
+            final_response = llm_with_tools.invoke(final_prompt)
+            return {
+                "messages": [final_response],
+                "features": updated_features
+            }
+
+    return {"messages": [response], "features": updated_features}

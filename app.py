@@ -4,6 +4,23 @@ from src.graph.workflow import create_graph
 from src.models import PropertyFeatures
 import pandas as pd
 
+
+def extract_message_text(message) -> str:
+    """Extract text content from AIMessage, handling both string and list formats."""
+    content = message.content
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        # Handle list of content blocks (from tool-enabled LLM)
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                text_parts.append(block)
+        return "".join(text_parts)
+    return str(content)
+
 # Page Config
 st.set_page_config(page_title="Dự Đoán Giá Bất Động Sản", page_icon="🏠")
 
@@ -46,7 +63,7 @@ for msg in st.session_state.messages:
             st.write(msg.content)
     elif msg.type == "ai":
         with st.chat_message("assistant"):
-            st.write(msg.content)
+            st.write(extract_message_text(msg))
 
 # Chat Input
 if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở Quận 1, 50m2...)"):
@@ -78,7 +95,7 @@ if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở 
             last_message = st.session_state.messages[-1]
             if last_message.type == "ai":
                 with st.chat_message("assistant"):
-                    st.write(last_message.content)
+                    st.write(extract_message_text(last_message))
             
             # Rerun to update sidebar
             st.rerun()
