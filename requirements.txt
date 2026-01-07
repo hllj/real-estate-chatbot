@@ -3,12 +3,13 @@ langchain
 langchain-google-genai
 google-generativeai
 googlemaps
-scikit-learn
+scikit-learn==1.6.1
 xgboost
 streamlit
 beautifulsoup4
 pandas
-numpy
+numpy==2.0.2
 joblib
 python-dotenv
 pydantic
+lightgbm

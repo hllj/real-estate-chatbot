@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from src.graph.state import GraphState
 from src.models import PropertyFeatures, VALID_VALUES
-from src.ml.placeholder_model import PricePredictor
+from src.ml.real_estate_predictor import PricePredictor
 from src.utils.scraper import fetch_property_details
 from src.tools.geocoding import get_coordinates
 
