@@ -4,14 +4,39 @@ from langchain_core.messages import BaseMessage
 from src.models import PropertyFeatures
 
 
+class ShapFeatureContribution(TypedDict, total=False):
+    """
+    SHAP contribution for a single feature.
+    """
+    feature: str  # Feature name (technical)
+    feature_vn: str  # Feature name in Vietnamese
+    shap_value: float  # SHAP value (in log scale)
+    feature_value: Optional[Any]  # Actual feature value
+    impact: str  # "positive" or "negative"
+
+
+class ShapExplanation(TypedDict, total=False):
+    """
+    SHAP explanation for a prediction.
+    """
+    success: bool
+    base_value: Optional[float]  # Expected model output (mean prediction)
+    predicted_log_price: Optional[float]
+    top_features: Optional[List[ShapFeatureContribution]]
+    all_contributions: Optional[List[ShapFeatureContribution]]
+    error: Optional[str]
+
+
 class PredictionResult(TypedDict, total=False):
     """
-    Kết quả dự đoán giá với thông tin confidence.
+    Kết quả dự đoán giá với thông tin confidence và SHAP explanation.
     """
     predicted_price: Optional[float]
     log_price: Optional[float]
     confidence_interval_90: Optional[Tuple[float, float]]  # (lower, upper) - 90% CI from tree estimators
     features_used: Optional[Dict[str, Any]]
+    shap_explanation: Optional[ShapExplanation]  # SHAP-based price breakdown
+    is_fallback: Optional[bool]  # True if using fallback heuristic model
     error: Optional[str]
 
 

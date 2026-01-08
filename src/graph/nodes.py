@@ -397,13 +397,40 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
     if prediction and isinstance(prediction, dict) and prediction.get("predicted_price"):
         price = prediction["predicted_price"]
         status_msg += f"\nĐã có dự đoán giá: {price:,.0f} VNĐ."
-        
+
         # Show confidence interval if available
         confidence = prediction.get("confidence_interval_90")
         if confidence and len(confidence) == 2:
             lower, upper = confidence
             status_msg += f"\nKhoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} VNĐ."
-        
+
+        # Show SHAP explanation if available
+        shap_explanation = prediction.get("shap_explanation")
+        if shap_explanation and shap_explanation.get("success"):
+            top_features = shap_explanation.get("top_features", [])[:5]
+            if top_features:
+                status_msg += "\n\n**Phân tích các yếu tố ảnh hưởng đến giá:**"
+
+                # Separate positive and negative impacts
+                positive_impacts = [f for f in top_features if f.get("shap_value", 0) > 0.01]
+                negative_impacts = [f for f in top_features if f.get("shap_value", 0) < -0.01]
+
+                if positive_impacts:
+                    status_msg += "\n📈 Yếu tố làm TĂNG giá:"
+                    for feat in positive_impacts[:3]:
+                        pct_impact = (10 ** feat["shap_value"] - 1) * 100
+                        vn_name = feat.get("feature_vn", feat["feature"])
+                        value_str = f" ({feat['feature_value']})" if feat.get("feature_value") else ""
+                        status_msg += f"\n  • {vn_name}{value_str}: +{pct_impact:.0f}%"
+
+                if negative_impacts:
+                    status_msg += "\n📉 Yếu tố làm GIẢM giá:"
+                    for feat in negative_impacts[:3]:
+                        pct_impact = (1 - 10 ** feat["shap_value"]) * 100
+                        vn_name = feat.get("feature_vn", feat["feature"])
+                        value_str = f" ({feat['feature_value']})" if feat.get("feature_value") else ""
+                        status_msg += f"\n  • {vn_name}{value_str}: -{pct_impact:.0f}%"
+
         # Indicate if using fallback model
         if prediction.get("is_fallback"):
             status_msg += "\n(Lưu ý: Sử dụng mô hình dự báo thay thế do mô hình chính không khả dụng.)"

@@ -13,3 +13,4 @@ joblib
 python-dotenv
 pydantic
 lightgbm
+shap==0.50.0

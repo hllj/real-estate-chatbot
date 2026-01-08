@@ -8,7 +8,7 @@ and computing amenity-based features from coordinates.
 
 import logging
 import math
-from typing import Dict, Optional, Tuple, Any
+from typing import Dict, Optional, Tuple, Any, List
 from pathlib import Path
 
 import joblib
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 from src.models import PropertyFeatures
 from src.preprocessing.feature_engineer import AmenityFeatureEngineer
+from src.ml.explainer import ShapExplainer, create_explainer
 
 
 # Paths
@@ -130,6 +131,7 @@ class RealEstatePricePredictor:
 
         self._model = None
         self._amenity_engineer = None
+        self._shap_explainer = None
 
     @property
     def model(self):
@@ -152,6 +154,24 @@ class RealEstatePricePredictor:
             self._amenity_engineer = AmenityFeatureEngineer(str(self.amenities_path))
             print("Amenity feature engineer loaded successfully")
         return self._amenity_engineer
+
+    @property
+    def shap_explainer(self) -> Optional[ShapExplainer]:
+        """Lazy load the SHAP explainer on first access."""
+        if self._shap_explainer is None:
+            try:
+                # Get all feature names for the explainer
+                all_features = self.NUMERIC_FEATURES + self.CATEGORICAL_FEATURES
+                print("Initializing SHAP explainer...")
+                self._shap_explainer = create_explainer(self.model, all_features)
+                if self._shap_explainer:
+                    print("SHAP explainer initialized successfully")
+                else:
+                    print("SHAP explainer not available")
+            except Exception as e:
+                logger.error(f"Failed to initialize SHAP explainer: {e}")
+                self._shap_explainer = None
+        return self._shap_explainer
 
     def _compute_size_and_log_size(self, features: PropertyFeatures) -> Tuple[Optional[float], Optional[float]]:
         """
@@ -295,13 +315,13 @@ class RealEstatePricePredictor:
 
     def predict_with_confidence(self, features: PropertyFeatures) -> Dict[str, Any]:
         """
-        Predict property price with confidence information.
+        Predict property price with confidence information and SHAP explanation.
 
         Args:
             features: PropertyFeatures object from chatbot
 
         Returns:
-            Dictionary with prediction and confidence info
+            Dictionary with prediction, confidence info, and SHAP explanation
         """
         try:
             print(f"Making prediction with confidence for area: {features.area_name}")
@@ -339,6 +359,21 @@ class RealEstatePricePredictor:
                 confidence_interval = (confidence_lower, confidence_upper)
                 print(f"Prediction with confidence (RMSE-based): {price:,.0f} VND (95% CI: {confidence_lower:,.0f} - {confidence_upper:,.0f})")
 
+            # Compute SHAP explanation
+            shap_explanation = None
+            if self.shap_explainer is not None:
+                try:
+                    print("Computing SHAP explanation...")
+                    shap_explanation = self.shap_explainer.explain_prediction(df, top_n=50)
+                    if shap_explanation.get('success'):
+                        print(f"SHAP explanation computed with {len(shap_explanation.get('top_features', []))} top features")
+                    else:
+                        print(f"SHAP explanation failed: {shap_explanation.get('error')}")
+                        shap_explanation = None
+                except Exception as e:
+                    logger.error(f"SHAP explanation error: {e}")
+                    shap_explanation = None
+
             return {
                 "predicted_price": float(price),
                 "log_price": float(log_price),
@@ -348,6 +383,7 @@ class RealEstatePricePredictor:
                     "has_size": features.size is not None or features.living_size is not None or (features.width and features.length),
                     "area_name": features.area_name,
                 },
+                "shap_explanation": shap_explanation,
             }
 
         except Exception as e:
@@ -560,6 +596,7 @@ class PricePredictor:
                     "has_size": True,
                     "area_name": features.area_name,
                 },
+                "shap_explanation": None,  # No SHAP for fallback
                 "is_fallback": True,
             }
 
@@ -580,9 +617,12 @@ class PricePredictor:
                     "has_size": True,
                     "area_name": features.area_name,
                 },
+                "shap_explanation": None,  # No SHAP for fallback
                 "is_fallback": True,
             }
 
         result["is_fallback"] = False
         print(f"Final prediction with confidence: {result.get('predicted_price', 0):,.0f} VND")
+        if result.get("shap_explanation"):
+            print("SHAP explanation included in result")
         return result

@@ -33,6 +33,8 @@ if "features" not in st.session_state:
     st.session_state.features = PropertyFeatures()
 if "unknown_fields" not in st.session_state:
     st.session_state.unknown_fields = []
+if "prediction_result" not in st.session_state:
+    st.session_state.prediction_result = None
 if "graph" not in st.session_state:
     st.session_state.graph = create_graph()
 
@@ -45,6 +47,53 @@ with st.sidebar:
     else:
         st.write("Chưa có thông tin.")
 
+    # Display prediction result with SHAP explanation
+    if "prediction_result" in st.session_state and st.session_state.prediction_result:
+        prediction = st.session_state.prediction_result
+        if prediction.get("predicted_price"):
+            st.header("Kết quả dự đoán")
+            price = prediction["predicted_price"]
+            st.metric("Giá dự đoán", f"{price:,.0f} VNĐ")
+
+            # Show confidence interval
+            confidence = prediction.get("confidence_interval_90")
+            if confidence and len(confidence) == 2:
+                lower, upper = confidence
+                st.caption(f"Khoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} VNĐ")
+
+            # Show SHAP explanation
+            shap_explanation = prediction.get("shap_explanation")
+            if shap_explanation and shap_explanation.get("success"):
+                with st.expander("🔍 Phân tích giá chi tiết", expanded=False):
+                    top_features = shap_explanation.get("top_features", [])[:8]
+
+                    if top_features:
+                        # Separate positive and negative impacts
+                        positive_impacts = [f for f in top_features if f.get("shap_value", 0) > 0.005]
+                        negative_impacts = [f for f in top_features if f.get("shap_value", 0) < -0.005]
+
+                        if positive_impacts:
+                            st.markdown("**📈 Yếu tố làm TĂNG giá:**")
+                            for feat in positive_impacts:
+                                pct_impact = (10 ** feat["shap_value"] - 1) * 100
+                                vn_name = feat.get("feature_vn", feat["feature"])
+                                value = feat.get("feature_value")
+                                value_str = f": {value}" if value is not None else ""
+                                st.markdown(f"- {vn_name}{value_str} → **+{pct_impact:.0f}%**")
+
+                        if negative_impacts:
+                            st.markdown("**📉 Yếu tố làm GIẢM giá:**")
+                            for feat in negative_impacts:
+                                pct_impact = (1 - 10 ** feat["shap_value"]) * 100
+                                vn_name = feat.get("feature_vn", feat["feature"])
+                                value = feat.get("feature_value")
+                                value_str = f": {value}" if value is not None else ""
+                                st.markdown(f"- {vn_name}{value_str} → **-{pct_impact:.0f}%**")
+
+            # Indicate fallback model
+            if prediction.get("is_fallback"):
+                st.warning("⚠️ Sử dụng mô hình dự báo thay thế")
+
     # Display unknown fields
     if st.session_state.unknown_fields:
         st.header("Thông tin không rõ")
@@ -54,6 +103,8 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.features = PropertyFeatures()
         st.session_state.unknown_fields = []
+        if "prediction_result" in st.session_state:
+            st.session_state.prediction_result = None
         st.rerun()
 
 # Display Chat History
@@ -90,6 +141,7 @@ if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở 
             st.session_state.messages = response['messages']
             st.session_state.features = response.get('features', st.session_state.features)
             st.session_state.unknown_fields = response.get('unknown_fields', st.session_state.unknown_fields)
+            st.session_state.prediction_result = response.get('prediction_result')
             
             # Display AI response
             last_message = st.session_state.messages[-1]
