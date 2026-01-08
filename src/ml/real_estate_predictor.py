@@ -364,7 +364,7 @@ class RealEstatePricePredictor:
             if self.shap_explainer is not None:
                 try:
                     print("Computing SHAP explanation...")
-                    shap_explanation = self.shap_explainer.explain_prediction(df, top_n=50)
+                    shap_explanation = self.shap_explainer.explain_prediction(df, top_n=30)  # Get all features
                     if shap_explanation.get('success'):
                         print(f"SHAP explanation computed with {len(shap_explanation.get('top_features', []))} top features")
                     else:

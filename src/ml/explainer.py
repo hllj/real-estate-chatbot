@@ -286,21 +286,21 @@ class ShapExplainer:
     def explain_prediction(
         self,
         X: pd.DataFrame,
-        top_n: int = 10
+        top_n: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Compute SHAP values and return top contributing features.
+        Compute SHAP values and return contributing features.
 
         Args:
             X: Input DataFrame with features (before preprocessing)
-            top_n: Number of top features to return
+            top_n: Number of top features to return. None or -1 means all features.
 
         Returns:
             Dictionary with:
                 - base_value: Expected model output (mean prediction)
                 - predicted_log_price: The model's prediction
-                - top_features: List of top contributing features
-                - feature_contributions: All aggregated feature contributions
+                - top_features: List of top contributing features (or all if top_n is None/-1)
+                - all_contributions: All aggregated feature contributions
         """
         try:
             # Preprocess features if preprocessor exists
@@ -370,10 +370,16 @@ class ShapExplainer:
             # Compute predicted log_price from base + sum of SHAP values
             predicted_log_price = base_value + sum(aggregated_shap.values())
 
+            # Handle top_n: None or -1 means all features
+            if top_n is None or top_n < 0:
+                top_features = contributions  # All features
+            else:
+                top_features = contributions[:top_n]
+
             return {
                 'base_value': base_value,
                 'predicted_log_price': predicted_log_price,
-                'top_features': contributions[:top_n],
+                'top_features': top_features,
                 'all_contributions': contributions,
                 'success': True
             }

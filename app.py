@@ -64,31 +64,52 @@ with st.sidebar:
             # Show SHAP explanation
             shap_explanation = prediction.get("shap_explanation")
             if shap_explanation and shap_explanation.get("success"):
-                with st.expander("🔍 Phân tích giá chi tiết", expanded=False):
-                    top_features = shap_explanation.get("top_features", [])[:8]
+                with st.expander("🔍 Phân tích giá chi tiết (SHAP)", expanded=False):
+                    # Show base value
+                    base_value = shap_explanation.get("base_value")
+                    if base_value is not None:
+                        base_price = 10 ** base_value
+                        st.markdown(f"**Giá cơ sở (Base Value):** {base_price:,.0f} VNĐ")
+                        st.caption(f"Log₁₀ base value: {base_value:.4f}")
+                        st.divider()
 
-                    if top_features:
-                        # Separate positive and negative impacts
-                        positive_impacts = [f for f in top_features if f.get("shap_value", 0) > 0.005]
-                        negative_impacts = [f for f in top_features if f.get("shap_value", 0) < -0.005]
+                    # Get all features (use all_contributions for complete list)
+                    all_features = shap_explanation.get("all_contributions", [])
 
-                        if positive_impacts:
+                    if all_features:
+                        # Separate positive and negative impacts (filter out near-zero values)
+                        positive_impacts = [f for f in all_features if f.get("shap_value", 0) > 0.001]
+                        negative_impacts = [f for f in all_features if f.get("shap_value", 0) < -0.001]
+
+                        col1, col2 = st.columns(2)
+
+                        with col1:
                             st.markdown("**📈 Yếu tố làm TĂNG giá:**")
-                            for feat in positive_impacts:
-                                pct_impact = (10 ** feat["shap_value"] - 1) * 100
-                                vn_name = feat.get("feature_vn", feat["feature"])
-                                value = feat.get("feature_value")
-                                value_str = f": {value}" if value is not None else ""
-                                st.markdown(f"- {vn_name}{value_str} → **+{pct_impact:.0f}%**")
+                            if positive_impacts:
+                                for feat in positive_impacts:
+                                    pct_impact = (10 ** feat["shap_value"] - 1) * 100
+                                    vn_name = feat.get("feature_vn", feat["feature"])
+                                    value = feat.get("feature_value")
+                                    value_str = f" ({value})" if value is not None else ""
+                                    st.markdown(f"- {vn_name}{value_str}: **+{pct_impact:.1f}%**")
+                            else:
+                                st.caption("Không có")
 
-                        if negative_impacts:
+                        with col2:
                             st.markdown("**📉 Yếu tố làm GIẢM giá:**")
-                            for feat in negative_impacts:
-                                pct_impact = (1 - 10 ** feat["shap_value"]) * 100
-                                vn_name = feat.get("feature_vn", feat["feature"])
-                                value = feat.get("feature_value")
-                                value_str = f": {value}" if value is not None else ""
-                                st.markdown(f"- {vn_name}{value_str} → **-{pct_impact:.0f}%**")
+                            if negative_impacts:
+                                for feat in negative_impacts:
+                                    pct_impact = (1 - 10 ** feat["shap_value"]) * 100
+                                    vn_name = feat.get("feature_vn", feat["feature"])
+                                    value = feat.get("feature_value")
+                                    value_str = f" ({value})" if value is not None else ""
+                                    st.markdown(f"- {vn_name}{value_str}: **-{pct_impact:.1f}%**")
+                            else:
+                                st.caption("Không có")
+
+                        # Show total features count
+                        st.divider()
+                        st.caption(f"Tổng số features: {len(all_features)} | Tăng giá: {len(positive_impacts)} | Giảm giá: {len(negative_impacts)}")
 
             # Indicate fallback model
             if prediction.get("is_fallback"):
