@@ -7,19 +7,21 @@ from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain_core.output_parsers.openai_functions import PydanticOutputFunctionsParser
 from dotenv import load_dotenv
 
-from src.graph.state import GraphState
+from src.graph.state import GraphState, PriceComparison
 from src.models import PropertyFeatures, VALID_VALUES
 from src.ml.real_estate_predictor import PricePredictor
 from src.utils.scraper import fetch_property_details
+from src.utils.price_comparison import get_comparison_if_available
 from src.tools.geocoding import get_coordinates
+from src.tools.property_scraper import scrape_property_listing, extract_features_from_scraped_data
 
 load_dotenv()
 
 # Setup LLM
 llm = ChatGoogleGenerativeAI(model=os.environ["GEMINI_MODEL"], temperature=0, convert_system_message_to_human=True)
 
-# Setup LLM with tools for geocoding
-tools = [get_coordinates]
+# Setup LLM with tools for geocoding and property scraping
+tools = [get_coordinates, scrape_property_listing]
 llm_with_tools = llm.bind_tools(tools)
 
 # Format valid values for prompts
@@ -137,13 +139,25 @@ def extract_info(state: GraphState) -> Dict[str, Any]:
     unknown_fields = list(current_unknown_fields)
 
     if urls:
-        # URL Mode
+        # URL Mode - Use Firecrawl for better extraction
         url = urls[0]
-        scraped_features = fetch_property_details(url)
-        # Merge scraped features
-        extracted_features_dict = extracted_features.model_dump(exclude_none=True)
-        scraped_features_dict = scraped_features.model_dump(exclude_none=True)
-        extracted_features_dict.update(scraped_features_dict)
+
+        # Try Firecrawl first
+        scraped_result = scrape_property_listing.invoke({"url": url})
+
+        if scraped_result.get("success"):
+            # Extract features from Firecrawl result
+            scraped_features_dict = extract_features_from_scraped_data(scraped_result)
+            extracted_features_dict = extracted_features.model_dump(exclude_none=True)
+            extracted_features_dict.update(scraped_features_dict)
+        else:
+            # Fallback to old scraper if Firecrawl fails
+            print(f"Firecrawl failed: {scraped_result.get('error')}. Falling back to basic scraper.")
+            scraped_features = fetch_property_details(url)
+            extracted_features_dict = extracted_features.model_dump(exclude_none=True)
+            scraped_features_dict = scraped_features.model_dump(exclude_none=True)
+            extracted_features_dict.update(scraped_features_dict)
+
         # Validate and normalize scraped features
         extracted_features, unknown_fields = validate_and_normalize_features(
             extracted_features_dict, current_unknown_fields
@@ -369,28 +383,39 @@ def predict_price(state: GraphState) -> Dict[str, Any]:
     """
     Node dự đoán giá nếu đủ thông tin quan trọng.
     Sử dụng predict_with_confidence() để có thêm khoảng tin cậy 95%.
+    Cũng tính toán so sánh giá nếu có cả giá dự đoán và giá thực tế.
     """
     features = state.get('features', PropertyFeatures())
+    result = {"prediction_result": None, "price_comparison": None}
 
     # Basic check: needs at least area and size (or other dims) to predict
     if features.area_name and (features.size or (features.width and features.length) or features.living_size):
         predictor = PricePredictor()
         # Sử dụng predict_with_confidence để có thêm khoảng tin cậy
         prediction_result = predictor.predict_with_confidence(features)
-        return {"prediction_result": prediction_result}
+        result["prediction_result"] = prediction_result
 
-    return {"prediction_result": None}
+        # Calculate price comparison if actual price is available
+        predicted_price = prediction_result.get("predicted_price") if prediction_result else None
+        actual_price = features.actual_price
+
+        price_comparison = get_comparison_if_available(predicted_price, actual_price)
+        if price_comparison:
+            result["price_comparison"] = price_comparison
+
+    return result
 
 
 def chatbot(state: GraphState) -> Dict[str, Any]:
     """
     Node sinh câu trả lời cho người dùng.
-    Hỗ trợ tool calling để lấy tọa độ từ địa chỉ.
+    Hỗ trợ tool calling để lấy tọa độ từ địa chỉ và trích xuất thông tin từ URL.
     """
     messages = state['messages']
     features = state.get('features', PropertyFeatures())
     prediction = state.get('prediction_result')
     unknown_fields = state.get('unknown_fields', [])
+    price_comparison = state.get('price_comparison')
 
     # Add context about current state to the system prompt
     status_msg = f"Hiện tại tôi đã có các thông tin sau: {features.model_dump(exclude_none=True)}"
@@ -443,6 +468,18 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
         # Indicate if using fallback model
         if prediction.get("is_fallback"):
             status_msg += "\n(Lưu ý: Sử dụng mô hình dự báo thay thế do mô hình chính không khả dụng.)"
+
+        # Show actual price if available
+        if features.actual_price:
+            from src.utils.price_comparison import format_price_vnd
+            status_msg += f"\n\n**Giá thực tế (từ tin đăng):** {format_price_vnd(features.actual_price)}"
+
+        # Show price comparison if available
+        if price_comparison:
+            status_msg += f"\n\n**SO SÁNH GIÁ DỰ ĐOÁN VÀ GIÁ THỰC TẾ:**\n{price_comparison.get('comparison_text_vn', '')}"
+        elif features.actual_price is None:
+            status_msg += "\n\n**GỢI Ý:** Nếu bạn có link tin đăng hoặc biết giá rao bán, hãy cung cấp để tôi so sánh với giá dự đoán."
+
     elif prediction and isinstance(prediction, (int, float)):
         # Backward compatibility for old format
         status_msg += f"\nĐã có dự đoán giá: {prediction:,.0f} VNĐ."
@@ -486,6 +523,18 @@ Sử dụng công cụ này khi:
 - Chưa có thông tin longitude/latitude trong features
 
 Ví dụ địa chỉ: "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM"
+
+**CÔNG CỤ TRÍCH XUẤT THÔNG TIN TỪ LINK:**
+Bạn có thể sử dụng công cụ `scrape_property_listing` để trích xuất thông tin bất động sản từ URL.
+Sử dụng công cụ này khi:
+- Người dùng cung cấp link tin đăng từ các trang batdongsan.com.vn, chotot.com, alonhadat.com.vn, mogi.vn, homedy.com
+- Cần lấy giá thực tế (actual_price) từ tin đăng để so sánh với giá dự đoán
+- Muốn tự động thu thập thông tin diện tích, số phòng, hướng nhà từ tin đăng
+
+**LƯU Ý VỀ GIÁ THỰC TẾ:**
+- Nếu đã có giá dự đoán nhưng chưa có giá thực tế, hãy hỏi người dùng xem họ có link tin đăng hoặc biết giá rao bán không
+- Khi có cả giá dự đoán và giá thực tế, hãy so sánh và đưa ra nhận xét
+- Người dùng có thể cung cấp giá thực tế trực tiếp (ví dụ: "giá rao bán là 5 tỷ")
 """
 
     generation_prompt = [
@@ -510,6 +559,25 @@ Ví dụ địa chỉ: "123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.
                 if result.get("success"):
                     updated_features.latitude = result.get("latitude")
                     updated_features.longitude = result.get("longitude")
+
+                # Create tool message with result
+                tool_messages.append(
+                    ToolMessage(
+                        content=str(result),
+                        tool_call_id=tool_call["id"]
+                    )
+                )
+
+            elif tool_call["name"] == "scrape_property_listing":
+                # Execute the property scraping tool
+                result = scrape_property_listing.invoke(tool_call["args"])
+
+                # Update features with scraped data if successful
+                if result.get("success"):
+                    scraped_features = extract_features_from_scraped_data(result)
+                    for key, value in scraped_features.items():
+                        if value is not None:
+                            setattr(updated_features, key, value)
 
                 # Create tool message with result
                 tool_messages.append(

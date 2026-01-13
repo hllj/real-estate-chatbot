@@ -35,6 +35,8 @@ if "unknown_fields" not in st.session_state:
     st.session_state.unknown_fields = []
 if "prediction_result" not in st.session_state:
     st.session_state.prediction_result = None
+if "price_comparison" not in st.session_state:
+    st.session_state.price_comparison = None
 if "graph" not in st.session_state:
     st.session_state.graph = create_graph()
 
@@ -115,6 +117,43 @@ with st.sidebar:
             if prediction.get("is_fallback"):
                 st.warning("⚠️ Sử dụng mô hình dự báo thay thế")
 
+    # Display actual price if available
+    actual_price = st.session_state.features.actual_price
+    if actual_price:
+        st.header("💰 Giá thực tế")
+        from src.utils.price_comparison import format_price_vnd
+        st.metric("Giá tin đăng", format_price_vnd(actual_price))
+
+    # Display price comparison if available
+    if st.session_state.price_comparison:
+        comparison = st.session_state.price_comparison
+        st.header("📊 So sánh giá")
+
+        # Show accuracy level with color
+        accuracy = comparison.get("accuracy_level", "")
+        if accuracy == "Xuất sắc":
+            st.success(f"🎯 Độ chính xác: {accuracy}")
+        elif accuracy == "Tốt":
+            st.success(f"✅ Độ chính xác: {accuracy}")
+        elif accuracy == "Khá":
+            st.info(f"📊 Độ chính xác: {accuracy}")
+        else:
+            st.warning(f"📈 Độ chính xác: {accuracy}")
+
+        # Show difference
+        diff_percent = comparison.get("difference_percent", 0)
+        difference = comparison.get("difference", 0)
+        st.metric(
+            "Chênh lệch",
+            f"{diff_percent:.1f}%",
+            delta=f"{format_price_vnd(abs(difference))}",
+            delta_color="normal" if difference >= 0 else "inverse"
+        )
+
+        # Show comparison text
+        with st.expander("📝 Chi tiết so sánh", expanded=True):
+            st.markdown(comparison.get("comparison_text_vn", ""))
+
     # Display unknown fields
     if st.session_state.unknown_fields:
         st.header("Thông tin không rõ")
@@ -126,6 +165,8 @@ with st.sidebar:
         st.session_state.unknown_fields = []
         if "prediction_result" in st.session_state:
             st.session_state.prediction_result = None
+        if "price_comparison" in st.session_state:
+            st.session_state.price_comparison = None
         st.rerun()
 
 # Display Chat History
@@ -163,6 +204,7 @@ if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở 
             st.session_state.features = response.get('features', st.session_state.features)
             st.session_state.unknown_fields = response.get('unknown_fields', st.session_state.unknown_fields)
             st.session_state.prediction_result = response.get('prediction_result')
+            st.session_state.price_comparison = response.get('price_comparison')
             
             # Display AI response
             last_message = st.session_state.messages[-1]

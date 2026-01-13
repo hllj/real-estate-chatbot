@@ -171,6 +171,9 @@ class PropertyFeatures(BaseModel):
     property_legal_document_status: Optional[PropertyLegalDocumentStatusType] = Field(None, description="Tình trạng pháp lý (Sổ hồng riêng, Đã có sổ, Đang chờ sổ, Hợp đồng mua bán)")
     property_status_name: Optional[PropertyStatusNameType] = Field(None, description="Tình trạng bàn giao dự án (Đã bàn giao, Chưa bàn giao)")
 
+    # Giá thực tế (từ tin đăng hoặc người dùng cung cấp)
+    actual_price: Optional[float] = Field(None, description="Giá thực tế của bất động sản (VNĐ) - từ tin đăng hoặc người dùng cung cấp")
+
     class Config:
         json_schema_extra = {
             "example": {

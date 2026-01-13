@@ -40,6 +40,18 @@ class PredictionResult(TypedDict, total=False):
     error: Optional[str]
 
 
+class PriceComparison(TypedDict, total=False):
+    """
+    So sánh giữa giá dự đoán và giá thực tế.
+    """
+    predicted_price: float  # Giá dự đoán (VNĐ)
+    actual_price: float  # Giá thực tế (VNĐ)
+    difference: float  # Chênh lệch (actual - predicted)
+    difference_percent: float  # Phần trăm chênh lệch so với giá thực tế
+    accuracy_level: str  # "Xuất sắc" (<10%), "Tốt" (<20%), "Khá" (<30%), "Cần cải thiện" (>30%)
+    comparison_text_vn: str  # Giải thích bằng tiếng Việt
+
+
 class GraphState(TypedDict):
     """
     Trạng thái của đồ thị quy trình (Graph State).
@@ -50,3 +62,4 @@ class GraphState(TypedDict):
     prediction_result: Optional[PredictionResult]  # Current prediction with confidence
     previous_prediction: Optional[PredictionResult]  # Previous prediction for comparison
     unknown_fields: List[str]  # Track fields user explicitly doesn't know
+    price_comparison: Optional[PriceComparison]  # Comparison between predicted and actual price
