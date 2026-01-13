@@ -44,7 +44,6 @@ wheels/
 Thumbs.db
 
 # Models (large files)
-models/*.pkl
 models/*.joblib
 models/*.h5
 !models/.gitkeep
