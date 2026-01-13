@@ -20,3 +20,8 @@ def create_graph():
     workflow.add_edge("chatbot", END)
 
     return workflow.compile()
+
+if __name__ == "__main__":
+    graph = create_graph()
+    print(graph.get_graph().draw_mermaid())
+    print("Workflow graph created and visualized.")
