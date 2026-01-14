@@ -2,7 +2,59 @@ import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage
 from src.graph.workflow import create_graph
 from src.models import PropertyFeatures
+from src.utils.model_downloader import download_models_if_missing, check_models_exist, MODELS
 import pandas as pd
+
+
+@st.cache_resource(show_spinner=False)
+def ensure_models_downloaded():
+    """
+    Ensure ML models are downloaded. This runs once per session.
+    Uses st.cache_resource to avoid re-downloading on every rerun.
+    """
+    model_status = check_models_exist()
+    missing_models = [name for name, info in model_status.items() if not info["exists"]]
+
+    if not missing_models:
+        return True, "All models present"
+
+    return False, missing_models
+
+
+def download_missing_models(missing_models: list):
+    """Download missing models with Streamlit progress UI."""
+    st.info("🔄 Đang tải mô hình ML... (chỉ chạy một lần)")
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    total_models = len(missing_models)
+
+    for idx, model_name in enumerate(missing_models):
+        config = MODELS[model_name]
+        status_text.text(f"Đang tải: {config['description']} ({model_name})...")
+
+        def update_progress(name: str, downloaded: int, total: int):
+            if total > 0:
+                model_progress = downloaded / total
+                overall_progress = (idx + model_progress) / total_models
+                progress_bar.progress(overall_progress)
+                size_mb = downloaded / (1024 * 1024)
+                total_mb = total / (1024 * 1024)
+                status_text.text(f"Đang tải {name}: {size_mb:.1f}/{total_mb:.1f} MB")
+
+        success, results = download_models_if_missing(progress_callback=update_progress)
+
+    progress_bar.progress(1.0)
+    status_text.text("✅ Hoàn tất tải mô hình!")
+
+    # Clear progress indicators after a moment
+    import time
+    time.sleep(1)
+    progress_bar.empty()
+    status_text.empty()
+
+    return success
 
 
 def extract_message_text(message) -> str:
@@ -23,6 +75,14 @@ def extract_message_text(message) -> str:
 
 # Page Config
 st.set_page_config(page_title="Dự Đoán Giá Bất Động Sản", page_icon="🏠")
+
+# Check and download models if needed (runs once per session)
+models_ready, missing = ensure_models_downloaded()
+if not models_ready:
+    download_missing_models(missing)
+    # Clear cache to re-check after download
+    ensure_models_downloaded.clear()
+    st.rerun()
 
 st.title("🏠 Trợ Lý Bất Động Sản AI")
 
