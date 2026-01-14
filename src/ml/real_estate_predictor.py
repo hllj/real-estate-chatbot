@@ -25,7 +25,10 @@ from src.ml.explainer import ShapExplainer, create_explainer
 
 # Paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-MODEL_PATH = PROJECT_ROOT / "models" / "best_model.pkl"
+# Model paths for Sell and Rent modes
+MODEL_PATH_SELL = PROJECT_ROOT / "models" / "s_with_features_best_model.pkl"
+MODEL_PATH_RENT = PROJECT_ROOT / "models" / "u_with_features_best_model.pkl"
+MODEL_PATH = MODEL_PATH_SELL  # Default for backward compatibility
 AMENITIES_PATH = PROJECT_ROOT / "data" / "hcm_amenities.csv"
 RMSE_LOG = 0.1340  # Typical RMSE in log10 price from model training
 
@@ -40,6 +43,10 @@ DEFAULT_VALUES = {
     "width": None,  # ~73% have this
     "log_size": 1.7,  # Median log10 of ~50m² = 1.7
 
+    # Rent-specific numeric defaults
+    "is_good_room": None,  # 0 or 1, leave as None for imputer
+    "deposit": None,  # Deposit amount, leave as None for imputer
+
     # Categorical defaults (mode values)
     "is_main_street": "nan",  # Missing value marker used in training data
     "apartment_type_name": "Không có thông tin",
@@ -47,6 +54,7 @@ DEFAULT_VALUES = {
     "rooms_count": "Không có thông tin",
     "toilets_count": "Không có thông tin",
     "furnishing_sell_status": "Không có thông tin",
+    "furnishing_rent_status": "Không có thông tin",
     "balconydirection_name": "Không có thông tin",
     "direction_name": "Không có thông tin",
     "house_type_name": "Không có thông tin",
@@ -85,12 +93,13 @@ DISTRICT_CENTROIDS = {
 
 class RealEstatePricePredictor:
     """
-    Price predictor that integrates the trained XGBoost model with
+    Price predictor that integrates the trained XGBoost/Random Forest model with
     the chatbot's PropertyFeatures and amenity feature engineering.
+    Supports both Sell and Rent modes.
     """
 
     # Expected feature columns (in order expected by the model)
-    NUMERIC_FEATURES = [
+    NUMERIC_FEATURES_BASE = [
         "floornumber", "floors", "length", "living_size", "width",
         "longitude", "latitude", "log_size",
         "dist_center_km",
@@ -109,29 +118,75 @@ class RealEstatePricePredictor:
         "amenities_within_1000m", "amenities_within_5000m",
     ]
 
-    CATEGORICAL_FEATURES = [
+    # Rent-specific numeric features
+    RENT_SPECIFIC_FEATURES = ["is_good_room", "deposit"]
+
+    # For backward compatibility
+    NUMERIC_FEATURES = NUMERIC_FEATURES_BASE
+
+    # Base categorical features (without furnishing - added dynamically based on mode)
+    CATEGORICAL_FEATURES_BASE = [
         "area_name", "category_name", "is_main_street",
         "apartment_type_name", "property_legal_document_status",
-        "rooms_count", "toilets_count", "furnishing_sell_status",
+        "rooms_count", "toilets_count",
         "balconydirection_name", "direction_name",
         "house_type_name", "commercial_type_name",
         "land_type_name", "property_status_name",
     ]
 
-    def __init__(self, model_path: str = None, amenities_path: str = None):
+    # Furnishing field for each mode
+    FURNISHING_FIELD_SELL = "furnishing_sell_status"
+    FURNISHING_FIELD_RENT = "furnishing_rent_status"
+
+    def __init__(self, model_path: str = None, amenities_path: str = None, mode: str = "Sell"):
         """
         Initialize the predictor with model and amenity data.
 
         Args:
-            model_path: Path to saved model. Defaults to models/best_model.pkl
+            model_path: Path to saved model. If not specified, uses mode-appropriate default.
             amenities_path: Path to amenities CSV. Defaults to data/hcm_amenities.csv
+            mode: "Sell" or "Rent" - determines which model and furnishing field to use
         """
-        self.model_path = Path(model_path) if model_path else MODEL_PATH
+        self.mode = mode
+
+        # Determine model path based on mode if not explicitly provided
+        if model_path:
+            self.model_path = Path(model_path)
+        else:
+            self.model_path = MODEL_PATH_SELL if mode == "Sell" else MODEL_PATH_RENT
+
         self.amenities_path = Path(amenities_path) if amenities_path else AMENITIES_PATH
 
         self._model = None
         self._amenity_engineer = None
         self._shap_explainer = None
+
+    @property
+    def furnishing_field(self) -> str:
+        """Get the furnishing field name based on mode."""
+        return self.FURNISHING_FIELD_SELL if self.mode == "Sell" else self.FURNISHING_FIELD_RENT
+
+    @property
+    def numeric_features(self) -> List[str]:
+        """Get numeric features list based on mode. Rent mode includes additional fields."""
+        if self.mode == "Rent":
+            return self.NUMERIC_FEATURES_BASE + self.RENT_SPECIFIC_FEATURES
+        return self.NUMERIC_FEATURES_BASE
+
+    @property
+    def categorical_features(self) -> List[str]:
+        """Get categorical features list with correct furnishing field based on mode."""
+        # Insert furnishing field after toilets_count (index 7 in base list)
+        features = self.CATEGORICAL_FEATURES_BASE.copy()
+        # Insert after toilets_count which is at index 6
+        features.insert(7, self.furnishing_field)
+        return features
+
+    # Keep CATEGORICAL_FEATURES as property for backward compatibility
+    @property
+    def CATEGORICAL_FEATURES(self) -> List[str]:
+        """Backward compatible property that returns mode-appropriate categorical features."""
+        return self.categorical_features
 
     @property
     def model(self):
@@ -244,7 +299,7 @@ class RealEstatePricePredictor:
         data["log_size"] = log_size
 
         # Add all amenity distance and count features
-        for feature_name in self.NUMERIC_FEATURES:
+        for feature_name in self.NUMERIC_FEATURES_BASE:
             if feature_name.startswith("dist_") or feature_name.startswith("amenities_"):
                 data[feature_name] = amenity_features.get(feature_name)
 
@@ -262,7 +317,16 @@ class RealEstatePricePredictor:
         data["property_legal_document_status"] = features.property_legal_document_status or DEFAULT_VALUES.get("property_legal_document_status")
         data["rooms_count"] = features.rooms_count or DEFAULT_VALUES.get("rooms_count")
         data["toilets_count"] = features.toilets_count or DEFAULT_VALUES.get("toilets_count")
-        data["furnishing_sell_status"] = features.furnishing_sell_status or DEFAULT_VALUES.get("furnishing_sell_status")
+
+        # Use correct furnishing field based on mode
+        if self.mode == "Sell":
+            data["furnishing_sell_status"] = features.furnishing_sell_status or DEFAULT_VALUES.get("furnishing_sell_status")
+        else:  # Rent mode
+            data["furnishing_rent_status"] = features.furnishing_rent_status or DEFAULT_VALUES.get("furnishing_rent_status")
+            # Add rent-specific numeric features
+            data["is_good_room"] = features.is_good_room if features.is_good_room is not None else DEFAULT_VALUES.get("is_good_room")
+            data["deposit"] = features.deposit if features.deposit is not None else DEFAULT_VALUES.get("deposit")
+
         data["balconydirection_name"] = features.balconydirection_name or DEFAULT_VALUES.get("balconydirection_name")
         data["direction_name"] = features.direction_name or DEFAULT_VALUES.get("direction_name")
         data["house_type_name"] = features.house_type_name or DEFAULT_VALUES.get("house_type_name")
@@ -270,8 +334,8 @@ class RealEstatePricePredictor:
         data["land_type_name"] = features.land_type_name or DEFAULT_VALUES.get("land_type_name")
         data["property_status_name"] = features.property_status_name or DEFAULT_VALUES.get("property_status_name")
 
-        # Create DataFrame with proper column order
-        all_features = self.NUMERIC_FEATURES + self.CATEGORICAL_FEATURES
+        # Create DataFrame with proper column order (use properties for mode-specific features)
+        all_features = self.numeric_features + self.categorical_features
         df = pd.DataFrame([data])
 
         # Ensure all columns exist and are in correct order
@@ -429,16 +493,16 @@ class RealEstatePricePredictor:
             return None
 
 
-# Singleton instance for reuse (lazy loaded)
-_predictor_instance: Optional[RealEstatePricePredictor] = None
+# Singleton instances for reuse (lazy loaded) - one per mode
+_predictor_instances: Dict[str, RealEstatePricePredictor] = {}
 
 
-def get_predictor() -> RealEstatePricePredictor:
-    """Get or create the singleton predictor instance."""
-    global _predictor_instance
-    if _predictor_instance is None:
-        _predictor_instance = RealEstatePricePredictor()
-    return _predictor_instance
+def get_predictor(mode: str = "Sell") -> RealEstatePricePredictor:
+    """Get or create the singleton predictor instance for the given mode."""
+    global _predictor_instances
+    if mode not in _predictor_instances:
+        _predictor_instances[mode] = RealEstatePricePredictor(mode=mode)
+    return _predictor_instances[mode]
 
 
 class PricePredictor:
@@ -448,29 +512,36 @@ class PricePredictor:
     This class provides the same interface as the original PricePredictor
     to minimize changes in the graph nodes. Includes fallback to heuristic
     model if the trained model can't be loaded.
+    Supports both Sell and Rent modes.
     """
 
-    def __init__(self):
+    def __init__(self, mode: str = "Sell"):
+        self.mode = mode
         self._predictor = None
         self._use_fallback = False
 
         try:
-            print("Initializing PricePredictor, attempting to load trained model...")
-            self._predictor = get_predictor()
+            print(f"Initializing PricePredictor in {mode} mode, attempting to load trained model...")
+            self._predictor = get_predictor(mode)
             # Test if model can be loaded
             _ = self._predictor.model
-            print("PricePredictor initialized with trained model")
+            print(f"PricePredictor initialized with trained model for {mode} mode")
         except Exception as e:
-            print(f"Could not load trained model ({e}). Using fallback heuristic model.")
+            print(f"Could not load trained model for {mode} mode ({e}). Using fallback heuristic model.")
             self._use_fallback = True
 
     def _fallback_predict(self, features: PropertyFeatures) -> float:
         """
         Fallback heuristic prediction when trained model is unavailable.
-        Uses simple price per m² estimation based on location.
+        Uses simple price per m² estimation based on location and mode.
         """
-        print(f"Using FALLBACK heuristic model for area: {features.area_name}")
-        base_price_per_m2 = 50_000_000  # 50 million VND/m²
+        print(f"Using FALLBACK heuristic model for area: {features.area_name} (mode: {self.mode})")
+
+        # Base price differs significantly between Sell and Rent modes
+        if self.mode == "Sell":
+            base_price_per_m2 = 50_000_000  # 50 million VND/m² for sale
+        else:  # Rent mode - monthly rent
+            base_price_per_m2 = 200_000  # 200k VND/m²/month for rent
 
         # Get size
         size = features.size or features.living_size
@@ -507,7 +578,8 @@ class PricePredictor:
 
         factor = location_factors.get(features.area_name, 1.0)
         price = size * base_price_per_m2 * factor
-        print(f"Fallback prediction: {price:,.0f} VND (size={size}m², factor={factor})")
+        unit = "VND" if self.mode == "Sell" else "VND/tháng"
+        print(f"Fallback prediction ({self.mode}): {price:,.0f} {unit} (size={size}m², factor={factor})")
 
         return price
 

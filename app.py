@@ -39,9 +39,48 @@ if "price_comparison" not in st.session_state:
     st.session_state.price_comparison = None
 if "graph" not in st.session_state:
     st.session_state.graph = create_graph()
+if "mode" not in st.session_state:
+    st.session_state.mode = "Sell"  # Default mode
+
+# Mode Selection - Only show if conversation hasn't started
+if len(st.session_state.messages) == 0:
+    st.markdown("### Chọn chế độ dự đoán giá:")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🏷️ BÁN", use_container_width=True, type="primary" if st.session_state.mode == "Sell" else "secondary"):
+            st.session_state.mode = "Sell"
+            st.rerun()
+    with col2:
+        if st.button("🔑 CHO THUÊ", use_container_width=True, type="primary" if st.session_state.mode == "Rent" else "secondary"):
+            st.session_state.mode = "Rent"
+            st.rerun()
+
+    # Display current mode
+    mode_display = "**BÁN** (Dự đoán giá bán)" if st.session_state.mode == "Sell" else "**CHO THUÊ** (Dự đoán giá thuê/tháng)"
+    st.info(f"Chế độ hiện tại: {mode_display}")
+    st.markdown("---")
 
 # Display Sidebar for Debug/Info
 with st.sidebar:
+    # New chat button at top
+    if st.button("🔄 Làm mới cuộc trò chuyện", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.features = PropertyFeatures()
+        st.session_state.unknown_fields = []
+        st.session_state.mode = "Sell"  # Reset to default mode
+        if "prediction_result" in st.session_state:
+            st.session_state.prediction_result = None
+        if "price_comparison" in st.session_state:
+            st.session_state.price_comparison = None
+        st.rerun()
+
+    st.divider()
+
+    # Show current mode at top of sidebar
+    mode_label = "🏷️ BÁN" if st.session_state.mode == "Sell" else "🔑 CHO THUÊ"
+    st.markdown(f"### Chế độ: {mode_label}")
+    st.divider()
+
     st.header("Thông tin đã thu thập")
     features_dict = st.session_state.features.dict(exclude_none=True)
     if features_dict:
@@ -55,13 +94,14 @@ with st.sidebar:
         if prediction.get("predicted_price"):
             st.header("Kết quả dự đoán")
             price = prediction["predicted_price"]
-            st.metric("Giá dự đoán", f"{price:,.0f} VNĐ")
+            price_unit = "VNĐ" if st.session_state.mode == "Sell" else "VNĐ/tháng"
+            st.metric("Giá dự đoán", f"{price:,.0f} {price_unit}")
 
             # Show confidence interval
             confidence = prediction.get("confidence_interval_90")
             if confidence and len(confidence) == 2:
                 lower, upper = confidence
-                st.caption(f"Khoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} VNĐ")
+                st.caption(f"Khoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} {price_unit}")
 
             # Show SHAP explanation
             shap_explanation = prediction.get("shap_explanation")
@@ -159,16 +199,6 @@ with st.sidebar:
         st.header("Thông tin không rõ")
         st.write(", ".join(st.session_state.unknown_fields))
 
-    if st.button("Làm mới cuộc trò chuyện"):
-        st.session_state.messages = []
-        st.session_state.features = PropertyFeatures()
-        st.session_state.unknown_fields = []
-        if "prediction_result" in st.session_state:
-            st.session_state.prediction_result = None
-        if "price_comparison" in st.session_state:
-            st.session_state.price_comparison = None
-        st.rerun()
-
 # Display Chat History
 for msg in st.session_state.messages:
     if msg.type == "human":
@@ -191,6 +221,7 @@ if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở 
     initial_state = {
         "messages": st.session_state.messages,
         "features": st.session_state.features,
+        "mode": st.session_state.mode,
         "unknown_fields": st.session_state.unknown_fields
     }
 

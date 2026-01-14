@@ -1,7 +1,10 @@
 from typing import Optional, Literal
 from pydantic import BaseModel, Field
 
-# Valid values for categorical features based on u_features.md
+# Valid values for categorical features based on u_features.md and s_features.md
+
+# Mode type for Sell vs Rent
+ModeType = Literal["Sell", "Rent"]
 
 AreaNameType = Literal[
     "Quận 1",
@@ -75,6 +78,14 @@ FurnishingSellStatusType = Literal[
     "Không có thông tin",
 ]
 
+FurnishingRentStatusType = Literal[
+    "Nội thất đầy đủ",
+    "Nội thất cao cấp",
+    "Hoàn thiện cơ bản",
+    "Bàn giao thô",
+    "Không có thông tin",
+]
+
 BalconyDirectionNameType = Literal[
     "Đông", "Tây", "Nam", "Bắc", "Đông Nam", "Đông Bắc", "Tây Nam", "Tây Bắc",
     "Không có thông tin",
@@ -117,6 +128,7 @@ PropertyStatusNameType = Literal[
 
 # Export all valid values as lists for use in prompts and validation
 VALID_VALUES = {
+    "mode": list(ModeType.__args__),
     "area_name": list(AreaNameType.__args__),
     "category_name": list(CategoryNameType.__args__),
     "apartment_type_name": list(ApartmentTypeNameType.__args__),
@@ -124,6 +136,7 @@ VALID_VALUES = {
     "rooms_count": list(RoomsCountType.__args__),
     "toilets_count": list(ToiletsCountType.__args__),
     "furnishing_sell_status": list(FurnishingSellStatusType.__args__),
+    "furnishing_rent_status": list(FurnishingRentStatusType.__args__),
     "balconydirection_name": list(BalconyDirectionNameType.__args__),
     "direction_name": list(DirectionNameType.__args__),
     "house_type_name": list(HouseTypeNameType.__args__),
@@ -167,8 +180,13 @@ class PropertyFeatures(BaseModel):
     # Đặc điểm khác
     direction_name: Optional[DirectionNameType] = Field(None, description="Hướng nhà (Đông, Tây, Nam, Bắc, Đông Nam, Đông Bắc, Tây Nam, Tây Bắc)")
     balconydirection_name: Optional[BalconyDirectionNameType] = Field(None, description="Hướng ban công (Đông, Tây, Nam, Bắc, Đông Nam, Đông Bắc, Tây Nam, Tây Bắc)")
-    furnishing_sell_status: Optional[FurnishingSellStatusType] = Field(None, description="Tình trạng nội thất (Nội thất đầy đủ, Nội thất cao cấp, Hoàn thiện cơ bản, Bàn giao thô)")
+    furnishing_sell_status: Optional[FurnishingSellStatusType] = Field(None, description="Tình trạng nội thất cho BÁN (Nội thất đầy đủ, Nội thất cao cấp, Hoàn thiện cơ bản, Bàn giao thô)")
+    furnishing_rent_status: Optional[FurnishingRentStatusType] = Field(None, description="Tình trạng nội thất cho THUÊ (Nội thất đầy đủ, Nội thất cao cấp, Hoàn thiện cơ bản, Bàn giao thô)")
     property_legal_document_status: Optional[PropertyLegalDocumentStatusType] = Field(None, description="Tình trạng pháp lý (Sổ hồng riêng, Đã có sổ, Đang chờ sổ, Hợp đồng mua bán)")
+
+    # Rent-specific fields
+    is_good_room: Optional[int] = Field(None, description="Đánh giá của nền tảng phòng tốt hay không (0 là không tốt, 1 là tốt) - CHỈ CHO THUÊ")
+    deposit: Optional[float] = Field(None, description="Tiền cọc (VNĐ) - CHỈ CHO THUÊ")
     property_status_name: Optional[PropertyStatusNameType] = Field(None, description="Tình trạng bàn giao dự án (Đã bàn giao, Chưa bàn giao)")
 
     # Giá thực tế (từ tin đăng hoặc người dùng cung cấp)

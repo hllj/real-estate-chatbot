@@ -36,25 +36,27 @@ def format_valid_values_for_prompt() -> str:
 
 VALID_VALUES_PROMPT = format_valid_values_for_prompt()
 
-# Vietnamese System Prompt with valid values guidance
-SYSTEM_PROMPT = f"""Bạn là một trợ lý thông minh chuyên về bất động sản tại Việt Nam.
-Nhiệm vụ của bạn là thu thập thông tin từ người dùng để dự đoán giá nhà.
+# Vietnamese System Prompt template - will be formatted with mode
+SYSTEM_PROMPT_TEMPLATE = """Bạn là một trợ lý thông minh chuyên về bất động sản tại Việt Nam.
+Nhiệm vụ của bạn là thu thập thông tin từ người dùng để dự đoán giá {mode_desc}.
 Hãy giao tiếp bằng tiếng Việt một cách tự nhiên, chuyên nghiệp và thân thiện.
+
+**CHẾ ĐỘ HIỆN TẠI: {mode_display}**
 
 Mục tiêu của bạn là thu thập đầy đủ các thông tin sau để có dự đoán chính xác nhất:
 
 1.  **Vị trí (Quan trọng nhất):**
     *   Quận/Huyện (`area_name`) - Chỉ chấp nhận các quận/huyện tại TP.HCM:
-        {', '.join(VALID_VALUES['area_name'])}. Những thông tin này được sử dụng để tính longitude và latitude nội bộ. Nếu được hãy hỏi người dùng về tên đường, ghi nhận thêm nếu có tên đường, phường nếu có. Sử dụng tool get_coordinates.
+        {area_names}. Những thông tin này được sử dụng để tính longitude và latitude nội bộ. Nếu được hãy hỏi người dùng về tên đường, ghi nhận thêm nếu có tên đường, phường nếu có. Sử dụng tool get_coordinates.
     *   Đặc điểm vị trí: Mặt tiền đường lớn (`is_main_street`) hay hẻm?
 
 2.  **Loại Bất Động Sản:**
-    *   Danh mục chính (`category_name`): {', '.join(VALID_VALUES['category_name'])}
+    *   Danh mục chính (`category_name`): {category_names}
     *   Chi tiết loại hình:
-        *   Nếu là Nhà ở (`house_type_name`): {', '.join([v for v in VALID_VALUES['house_type_name'] if v != 'Không có thông tin'])}
-        *   Nếu là Chung cư (`apartment_type_name`): {', '.join([v for v in VALID_VALUES['apartment_type_name'] if v != 'Không có thông tin'])}
-        *   Nếu là Đất (`land_type_name`): {', '.join([v for v in VALID_VALUES['land_type_name'] if v != 'Không có thông tin'])}
-        *   Nếu là Văn phòng/TM (`commercial_type_name`): {', '.join([v for v in VALID_VALUES['commercial_type_name'] if v != 'Không có thông tin'])}
+        *   Nếu là Nhà ở (`house_type_name`): {house_types}
+        *   Nếu là Chung cư (`apartment_type_name`): {apartment_types}
+        *   Nếu là Đất (`land_type_name`): {land_types}
+        *   Nếu là Văn phòng/TM (`commercial_type_name`): {commercial_types}
 
 3.  **Kích thước & Diện tích:**
     *   Diện tích đất/sử dụng (`size`) - Đơn vị: m2. Hãy hỏi trong mọi trường hợp.
@@ -66,18 +68,18 @@ Mục tiêu của bạn là thu thập đầy đủ các thông tin sau để c�
     *   Tầng số mấy (`floornumber`) - Nếu là tìm Chung cư / Căn hộ / Văn phòng.
     *   Số phòng ngủ (`rooms_count`): 1-10 hoặc "nhiều hơn 10".
     *   Số toilet (`toilets_count`): 1-6 hoặc "Nhiều hơn 6".
-    *   Hướng nhà (`direction_name`): {', '.join([v for v in VALID_VALUES['direction_name'] if v != 'Không có thông tin'])}
-    *   Hướng ban công (`balconydirection_name`): {', '.join([v for v in VALID_VALUES['balconydirection_name'] if v != 'Không có thông tin'])}
-    *   Nội thất (`furnishing_sell_status`): {', '.join([v for v in VALID_VALUES['furnishing_sell_status'] if v != 'Không có thông tin'])}
+    *   Hướng nhà (`direction_name`): {direction_names}
+    *   Hướng ban công (`balconydirection_name`): {balcony_directions}
+    *   Nội thất (`{furnishing_field}`): {furnishing_values}
 
 5.  **Pháp lý & Tình trạng:**
-    *   Giấy tờ pháp lý (`property_legal_document_status`): {', '.join([v for v in VALID_VALUES['property_legal_document_status'] if v != 'Không có thông tin'])}. Thường được hỏi cho Nhà ở, Đất, Chung cư.
-    *   Tình trạng bàn giao (`property_status_name`): {', '.join([v for v in VALID_VALUES['property_status_name'] if v != 'Không có thông tin'])}. Thường được hỏi cho tình trạng của Nhà ở, Đất, Chung cư.
-
+    *   Giấy tờ pháp lý (`property_legal_document_status`): {legal_statuses}. Thường được hỏi cho Nhà ở, Đất, Chung cư.
+    *   Tình trạng bàn giao (`property_status_name`): {property_statuses}. Thường được hỏi cho tình trạng của Nhà ở, Đất, Chung cư.
+{rent_specific_section}
 Lưu ý:
 *   Nếu người dùng đưa link, hãy nói rằng bạn đã trích xuất thông tin từ link đó.
 *   Nếu bạn đã có dự đoán giá, hãy thông báo cho người dùng và giải thích ngắn gọn tại sao có giá đó.
-*   Luôn sử dụng đơn vị diện tích là m2 và tiền tệ là VNĐ (Ví dụ: 5 tỷ, 5.5 tỷ).
+*   Luôn sử dụng đơn vị diện tích là m2 và tiền tệ là {currency_unit}.
 *   Đừng hỏi dồn dập tất cả cùng lúc, chỉ từ 1-2 câu hỏi một lúc. Hãy hỏi tự nhiên, ưu tiên Vị trí và Loại bất động sản trước.
 *   Khi hỏi người dùng về thông tin, hãy gợi ý các lựa chọn hợp lệ để họ dễ trả lời.
 *   Hãy đưa ra đầy đủ các lựa chọn có thể có của mỗi trường dữ liệu mà bạn có.
@@ -88,6 +90,45 @@ Lưu ý:
 *   Chỉ hỏi lại về một trường đã đánh dấu "không biết" nếu người dùng CHỦ ĐỘNG cung cấp thông tin mới.
 *   Ví dụ: Nếu người dùng nói "không biết hướng nhà", KHÔNG hỏi lại "Hướng nhà là gì?" trong các câu hỏi tiếp theo.
 """
+
+
+def get_system_prompt(mode: str = "Sell") -> str:
+    """Generate system prompt based on mode (Sell or Rent)."""
+    furnishing_field = "furnishing_sell_status" if mode == "Sell" else "furnishing_rent_status"
+    furnishing_values = VALID_VALUES.get(furnishing_field, VALID_VALUES['furnishing_sell_status'])
+
+    # Rent-specific section
+    if mode == "Rent":
+        rent_specific_section = """
+6.  **Thông tin cho thuê (CHỈ CHO CHẾ ĐỘ THUÊ):**
+    *   Đánh giá phòng (`is_good_room`): 0 (không tốt) hoặc 1 (tốt) - Đánh giá của nền tảng về chất lượng phòng.
+    *   Tiền cọc (`deposit`): Số tiền cọc (VNĐ). Hỏi người dùng nếu họ biết tiền cọc.
+"""
+    else:
+        rent_specific_section = ""
+
+    return SYSTEM_PROMPT_TEMPLATE.format(
+        mode_desc="bán" if mode == "Sell" else "cho thuê",
+        mode_display="BÁN" if mode == "Sell" else "CHO THUÊ",
+        area_names=', '.join(VALID_VALUES['area_name']),
+        category_names=', '.join(VALID_VALUES['category_name']),
+        house_types=', '.join([v for v in VALID_VALUES['house_type_name'] if v != 'Không có thông tin']),
+        apartment_types=', '.join([v for v in VALID_VALUES['apartment_type_name'] if v != 'Không có thông tin']),
+        land_types=', '.join([v for v in VALID_VALUES['land_type_name'] if v != 'Không có thông tin']),
+        commercial_types=', '.join([v for v in VALID_VALUES['commercial_type_name'] if v != 'Không có thông tin']),
+        direction_names=', '.join([v for v in VALID_VALUES['direction_name'] if v != 'Không có thông tin']),
+        balcony_directions=', '.join([v for v in VALID_VALUES['balconydirection_name'] if v != 'Không có thông tin']),
+        furnishing_field=furnishing_field,
+        furnishing_values=', '.join([v for v in furnishing_values if v != 'Không có thông tin']),
+        legal_statuses=', '.join([v for v in VALID_VALUES['property_legal_document_status'] if v != 'Không có thông tin']),
+        property_statuses=', '.join([v for v in VALID_VALUES['property_status_name'] if v != 'Không có thông tin']),
+        rent_specific_section=rent_specific_section,
+        currency_unit="VNĐ (Ví dụ: 5 tỷ, 5.5 tỷ)" if mode == "Sell" else "VNĐ/tháng (Ví dụ: 10 triệu/tháng)"
+    )
+
+
+# Default system prompt for backward compatibility
+SYSTEM_PROMPT = get_system_prompt("Sell")
 
 # Extraction prompt with strict valid values
 EXTRACTION_PROMPT_TEMPLATE = """Trích xuất thông tin bất động sản từ tin nhắn sau của người dùng.
@@ -332,7 +373,7 @@ def validate_and_normalize_features(
     categorical_fields = [
         "category_name", "apartment_type_name", "house_type_name",
         "commercial_type_name", "land_type_name", "furnishing_sell_status",
-        "property_legal_document_status", "property_status_name"
+        "furnishing_rent_status", "property_legal_document_status", "property_status_name"
     ]
 
     for field in categorical_fields:
@@ -386,11 +427,12 @@ def predict_price(state: GraphState) -> Dict[str, Any]:
     Cũng tính toán so sánh giá nếu có cả giá dự đoán và giá thực tế.
     """
     features = state.get('features', PropertyFeatures())
+    mode = state.get('mode', 'Sell')  # Default to Sell mode if not specified
     result = {"prediction_result": None, "price_comparison": None}
 
     # Basic check: needs at least area and size (or other dims) to predict
     if features.area_name and (features.size or (features.width and features.length) or features.living_size):
-        predictor = PricePredictor()
+        predictor = PricePredictor(mode=mode)
         # Sử dụng predict_with_confidence để có thêm khoảng tin cậy
         prediction_result = predictor.predict_with_confidence(features)
         result["prediction_result"] = prediction_result
@@ -413,15 +455,20 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
     """
     messages = state['messages']
     features = state.get('features', PropertyFeatures())
+    mode = state.get('mode', 'Sell')  # Default to Sell mode if not specified
     prediction = state.get('prediction_result')
     unknown_fields = state.get('unknown_fields', [])
     price_comparison = state.get('price_comparison')
 
+    # Get mode-specific system prompt
+    system_prompt = get_system_prompt(mode)
+
     # Add context about current state to the system prompt
+    price_unit = "VNĐ" if mode == "Sell" else "VNĐ/tháng"
     status_msg = f"Hiện tại tôi đã có các thông tin sau: {features.model_dump(exclude_none=True)}"
     if prediction and isinstance(prediction, dict) and prediction.get("predicted_price"):
         price = prediction["predicted_price"]
-        status_msg += f"\nĐã có dự đoán giá: {price:,.0f} VNĐ."
+        status_msg += f"\nĐã có dự đoán giá: {price:,.0f} {price_unit}."
 
         # Show confidence interval if available
         confidence = prediction.get("confidence_interval_90")
@@ -505,10 +552,13 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
             "apartment_type_name": "Loại căn hộ",
             "land_type_name": "Loại đất",
             "commercial_type_name": "Loại thương mại",
-            "furnishing_sell_status": "Nội thất",
+            "furnishing_sell_status": "Nội thất (Bán)",
+            "furnishing_rent_status": "Nội thất (Thuê)",
             "property_legal_document_status": "Pháp lý",
             "property_status_name": "Tình trạng bàn giao",
             "is_main_street": "Mặt tiền",
+            "is_good_room": "Đánh giá phòng (Thuê)",
+            "deposit": "Tiền cọc (Thuê)",
         }
         unknown_names = [field_names_vn.get(f, f) for f in unknown_fields]
         status_msg += f"\n\n**CÁC THÔNG TIN NGƯỜI DÙNG ĐÃ NÓI KHÔNG BIẾT (KHÔNG HỎI LẠI):** {', '.join(unknown_names)}"
@@ -538,7 +588,7 @@ Sử dụng công cụ này khi:
 """
 
     generation_prompt = [
-        SystemMessage(content=SYSTEM_PROMPT),
+        SystemMessage(content=system_prompt),
         SystemMessage(content=status_msg),
         SystemMessage(content=tool_instruction),
     ] + messages

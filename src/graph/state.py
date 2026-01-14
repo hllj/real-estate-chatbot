@@ -1,7 +1,7 @@
-from typing import Annotated, TypedDict, List, Dict, Any, Optional, Tuple
+from typing import Annotated, TypedDict, List, Dict, Any, Optional, Tuple, Literal
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
-from src.models import PropertyFeatures
+from src.models import PropertyFeatures, ModeType
 
 
 class ShapFeatureContribution(TypedDict, total=False):
@@ -58,6 +58,7 @@ class GraphState(TypedDict):
     """
     messages: Annotated[List[BaseMessage], add_messages]
     features: PropertyFeatures
+    mode: ModeType  # "Sell" or "Rent" - determines which model to use
     user_input_url: Optional[str]
     prediction_result: Optional[PredictionResult]  # Current prediction with confidence
     previous_prediction: Optional[PredictionResult]  # Previous prediction for comparison
