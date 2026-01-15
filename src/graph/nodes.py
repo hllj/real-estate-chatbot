@@ -58,12 +58,7 @@ Mục tiêu của bạn là thu thập đầy đủ các thông tin sau để c�
         *   Nếu là Đất (`land_type_name`): {land_types}
         *   Nếu là Văn phòng/TM (`commercial_type_name`): {commercial_types}
 
-3.  **Kích thước & Diện tích:**
-    *   Diện tích đất/sử dụng (`size`) - Đơn vị: m2. Hãy hỏi trong mọi trường hợp.
-    *   Diện tích sử dụng thực tế (`living_size`) - Đơn vị: m2. Hãy hỏi trong trường hợp là Đất và muốn biết diện tích sử dụng thực tế.
-    *   Kích thước: Chiều ngang (`width`) x Chiều dài (`length`). Hãy hỏi trong mọi trường hợp.
-
-4.  **Cấu trúc & Tiện ích:**
+3.  **Cấu trúc & Tiện ích:**
     *   Số tầng (`floors`). Chỉ hỏi trong trường hợp Chung cư hoặc Nhà ở.
     *   Tầng số mấy (`floornumber`) - Nếu là tìm Chung cư / Căn hộ / Văn phòng.
     *   Số phòng ngủ (`rooms_count`): 1-10 hoặc "nhiều hơn 10".
@@ -71,18 +66,25 @@ Mục tiêu của bạn là thu thập đầy đủ các thông tin sau để c�
     *   Hướng nhà (`direction_name`): {direction_names}
     *   Hướng ban công (`balconydirection_name`): {balcony_directions}
     *   Nội thất (`{furnishing_field}`): {furnishing_values}
+        
+4.  **Kích thước & Diện tích:**
+    *   Diện tích đất/sử dụng (`size`) - Đơn vị: m2. Hãy hỏi trong mọi trường hợp.
+    *   Diện tích sử dụng thực tế (`living_size`) - Đơn vị: m2. Hãy hỏi trong trường hợp là Đất và muốn biết diện tích sử dụng thực tế.
+    *   Kích thước: Chiều ngang (`width`) x Chiều dài (`length`). Hãy hỏi trong mọi trường hợp.
+
 
 5.  **Pháp lý & Tình trạng:**
     *   Giấy tờ pháp lý (`property_legal_document_status`): {legal_statuses}. Thường được hỏi cho Nhà ở, Đất, Chung cư.
     *   Tình trạng bàn giao (`property_status_name`): {property_statuses}. Thường được hỏi cho tình trạng của Nhà ở, Đất, Chung cư.
 {rent_specific_section}
+
 Lưu ý:
 *   Nếu người dùng đưa link, hãy nói rằng bạn đã trích xuất thông tin từ link đó.
 *   Nếu bạn đã có dự đoán giá, hãy thông báo cho người dùng và giải thích ngắn gọn tại sao có giá đó.
 *   Luôn sử dụng đơn vị diện tích là m2 và tiền tệ là {currency_unit}.
+*   Hãy thu thập thông tin theo đúng thứ tự từ mục 1 đến mục 5. 
 *   Đừng hỏi dồn dập tất cả cùng lúc, chỉ từ 1-2 câu hỏi một lúc. Hãy hỏi tự nhiên, ưu tiên Vị trí và Loại bất động sản trước.
-*   Khi hỏi người dùng về thông tin, hãy gợi ý các lựa chọn hợp lệ để họ dễ trả lời.
-*   Hãy đưa ra đầy đủ các lựa chọn có thể có của mỗi trường dữ liệu mà bạn có.
+*   Khi hỏi người dùng về thông tin, hãy gợi ý các lựa chọn hợp lệ để họ dễ trả lời. Hãy đưa ra đầy đủ các lựa chọn có thể có của mỗi trường dữ liệu mà bạn có.
 
 **QUAN TRỌNG - Xử lý thông tin người dùng không biết:**
 *   Nếu người dùng nói họ "không biết", "không rõ", "chưa biết", "không nhớ" về một trường nào đó, hãy GHI NHẬN và KHÔNG hỏi lại về trường đó nữa.
@@ -431,7 +433,7 @@ def predict_price(state: GraphState) -> Dict[str, Any]:
     result = {"prediction_result": None, "price_comparison": None}
 
     # Basic check: needs at least area and size (or other dims) to predict
-    if features.area_name and (features.size or (features.width and features.length) or features.living_size):
+    if features.area_name:
         predictor = PricePredictor(mode=mode)
         # Sử dụng predict_with_confidence để có thêm khoảng tin cậy
         prediction_result = predictor.predict_with_confidence(features)

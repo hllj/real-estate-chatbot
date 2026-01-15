@@ -600,16 +600,6 @@ class PricePredictor:
             print("Prediction skipped: missing area_name")
             return None
 
-        has_size = (
-            features.size is not None or
-            features.living_size is not None or
-            (features.width is not None and features.length is not None)
-        )
-
-        if not has_size:
-            print("Prediction skipped: missing size information")
-            return None
-
         # Use fallback if model couldn't be loaded
         if self._use_fallback:
             print("Using fallback mode (trained model not available)")
@@ -644,16 +634,6 @@ class PricePredictor:
         if not features.area_name:
             print("Prediction skipped: missing area_name")
             return {"predicted_price": None, "error": "Thiếu thông tin vị trí (quận/huyện)"}
-
-        has_size = (
-            features.size is not None or
-            features.living_size is not None or
-            (features.width is not None and features.length is not None)
-        )
-
-        if not has_size:
-            print("Prediction skipped: missing size information")
-            return {"predicted_price": None, "error": "Thiếu thông tin diện tích"}
 
         # Use fallback if model couldn't be loaded
         if self._use_fallback:
