@@ -14,14 +14,15 @@ from src.utils.scraper import fetch_property_details
 from src.utils.price_comparison import get_comparison_if_available
 from src.tools.geocoding import get_coordinates
 from src.tools.property_scraper import scrape_property_listing, extract_features_from_scraped_data
+from src.tools.listing_search import search_similar_listings, search_listings_from_features
 
 load_dotenv()
 
 # Setup LLM
 llm = ChatGoogleGenerativeAI(model=os.environ["GEMINI_MODEL"], temperature=0, convert_system_message_to_human=True)
 
-# Setup LLM with tools for geocoding and property scraping
-tools = [get_coordinates, scrape_property_listing]
+# Setup LLM with tools for geocoding, property scraping, and listing search
+tools = [get_coordinates, scrape_property_listing, search_similar_listings]
 llm_with_tools = llm.bind_tools(tools)
 
 # Format valid values for prompts
@@ -450,6 +451,51 @@ def predict_price(state: GraphState) -> Dict[str, Any]:
     return result
 
 
+def search_similar(state: GraphState) -> Dict[str, Any]:
+    """
+    Node tự động tìm kiếm BĐS tương tự sau khi có dự đoán giá.
+    Chỉ chạy khi:
+    - Có dự đoán giá thành công
+    - Người dùng đã cung cấp URL (đang xem tin đăng cụ thể)
+    """
+    prediction = state.get('prediction_result')
+    features = state.get('features', PropertyFeatures())
+    mode = state.get('mode', 'Sell')
+    user_input_url = state.get('user_input_url')
+
+    # Only search if we have a prediction and user provided a URL
+    if not prediction or not isinstance(prediction, dict):
+        print("[SearchSimilar] No prediction available, skipping search")
+        return {}
+
+    predicted_price = prediction.get("predicted_price")
+    if not predicted_price:
+        print("[SearchSimilar] No predicted price, skipping search")
+        return {}
+
+    # Check if we have minimum criteria for search
+    if not features.area_name:
+        print("[SearchSimilar] No area_name, skipping search")
+        return {}
+
+    print(f"\n[SearchSimilar] === Auto-searching similar listings ===")
+    print(f"[SearchSimilar] Mode: {mode}, Predicted price: {predicted_price}")
+    print(f"[SearchSimilar] URL provided: {user_input_url is not None}")
+
+    try:
+        result = search_listings_from_features(
+            features=features,
+            predicted_price=predicted_price,
+            mode=mode,
+            max_results=5
+        )
+        print(f"[SearchSimilar] Found {result.get('total_found', 0)} similar listings")
+        return {"listing_recommendations": result}
+    except Exception as e:
+        print(f"[SearchSimilar] Error searching: {e}")
+        return {}
+
+
 def chatbot(state: GraphState) -> Dict[str, Any]:
     """
     Node sinh câu trả lời cho người dùng.
@@ -461,6 +507,7 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
     prediction = state.get('prediction_result')
     unknown_fields = state.get('unknown_fields', [])
     price_comparison = state.get('price_comparison')
+    listing_recommendations = state.get('listing_recommendations')
 
     # Get mode-specific system prompt
     system_prompt = get_system_prompt(mode)
@@ -565,6 +612,15 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
         unknown_names = [field_names_vn.get(f, f) for f in unknown_fields]
         status_msg += f"\n\n**CÁC THÔNG TIN NGƯỜI DÙNG ĐÃ NÓI KHÔNG BIẾT (KHÔNG HỎI LẠI):** {', '.join(unknown_names)}"
 
+    # Add listing recommendations to context
+    if listing_recommendations and listing_recommendations.get("success"):
+        listings = listing_recommendations.get("listings", [])
+        if listings:
+            mode_text = "bán" if mode == "Sell" else "cho thuê"
+            status_msg += f"\n\n**ĐÃ TÌM THẤY {len(listings)} BẤT ĐỘNG SẢN {mode_text.upper()} TƯƠNG TỰ:**"
+            status_msg += f"\n{listing_recommendations.get('message', '')}"
+            status_msg += "\n\n**QUAN TRỌNG:** Hãy LUÔN đề cập đến các BĐS tương tự này trong câu trả lời của bạn để người dùng biết họ có thể tham khảo!"
+
     # Add tool usage instruction
     tool_instruction = """
 **CÔNG CỤ TÌM TỌA ĐỘ:**
@@ -583,10 +639,29 @@ Sử dụng công cụ này khi:
 - Cần lấy giá thực tế (actual_price) từ tin đăng để so sánh với giá dự đoán
 - Muốn tự động thu thập thông tin diện tích, số phòng, hướng nhà từ tin đăng
 
+**CÔNG CỤ TÌM KIẾM BẤT ĐỘNG SẢN TƯƠNG TỰ:**
+Bạn có thể sử dụng công cụ `search_similar_listings` để tìm các BĐS tương tự trong cơ sở dữ liệu.
+Sử dụng công cụ này khi:
+- Đã có dự đoán giá và muốn gợi ý các BĐS trong tầm giá tương tự
+- Người dùng hỏi "có BĐS nào tương tự không?", "giá này có hợp lý không?", "so sánh với thị trường"
+- Người dùng muốn xem các lựa chọn khác trong cùng khu vực hoặc cùng loại hình
+- Muốn đánh giá xem giá dự đoán có phù hợp với thị trường không
+
+**LƯU Ý QUAN TRỌNG:** Hệ thống sẽ TỰ ĐỘNG điền các thông tin sau, bạn KHÔNG CẦN truyền:
+- mode: Tự động lấy từ chế độ hiện tại (Sell/Rent)
+- target_price: Tự động lấy từ giá dự đoán nếu có
+- area_name, category_name, size, rooms_count: Tự động lấy từ thông tin đã thu thập
+
+Bạn chỉ cần GỌI TOOL mà không cần truyền tham số, hệ thống sẽ tự động sử dụng thông tin đã có!
+
 **LƯU Ý VỀ GIÁ THỰC TẾ:**
 - Nếu đã có giá dự đoán nhưng chưa có giá thực tế, hãy hỏi người dùng xem họ có link tin đăng hoặc biết giá rao bán không
 - Khi có cả giá dự đoán và giá thực tế, hãy so sánh và đưa ra nhận xét
 - Người dùng có thể cung cấp giá thực tế trực tiếp (ví dụ: "giá rao bán là 5 tỷ")
+
+**GỢI Ý TÌM KIẾM BĐS:**
+- Sau khi có dự đoán giá, HÃY CHỦ ĐỘNG hỏi người dùng có muốn xem các BĐS tương tự không
+- Ví dụ: "Bạn có muốn xem các bất động sản tương tự đang rao bán/cho thuê không?"
 """
 
     generation_prompt = [
@@ -600,6 +675,8 @@ Sử dụng công cụ này khi:
 
     # Handle tool calls if any
     updated_features = features.model_copy()
+    listing_recommendations = None
+
     if response.tool_calls:
         tool_messages = []
         for tool_call in response.tool_calls:
@@ -639,13 +716,48 @@ Sử dụng công cụ này khi:
                     )
                 )
 
+            elif tool_call["name"] == "search_similar_listings":
+                # Execute the listing search tool with correct mode from state
+                args = dict(tool_call["args"])
+                args["mode"] = mode  # Override with current mode from state
+
+                # Auto-fill target_price from prediction if not provided
+                if "target_price" not in args or args.get("target_price") is None:
+                    if prediction and isinstance(prediction, dict) and prediction.get("predicted_price"):
+                        args["target_price"] = prediction["predicted_price"]
+                        print(f"[Chatbot] Auto-filling target_price from prediction: {args['target_price']}")
+
+                # Auto-fill features from current features if not provided
+                features_dict = features.model_dump(exclude_none=True)
+                for field in ["area_name", "category_name", "size", "rooms_count", "house_type_name", "apartment_type_name"]:
+                    if field not in args or args.get(field) is None:
+                        if field in features_dict and features_dict[field] is not None:
+                            args[field] = features_dict[field]
+
+                print(f"[Chatbot] Calling search_similar_listings with mode={mode}, args={args}")
+                result = search_similar_listings.invoke(args)
+
+                # Store listing recommendations in state
+                listing_recommendations = result
+
+                # Create tool message with result (summary for LLM)
+                tool_messages.append(
+                    ToolMessage(
+                        content=result.get("message", str(result)),
+                        tool_call_id=tool_call["id"]
+                    )
+                )
+
         # If there were tool calls, get final response with tool results
         if tool_messages:
             final_prompt = generation_prompt + [response] + tool_messages
             final_response = llm_with_tools.invoke(final_prompt)
-            return {
+            return_state = {
                 "messages": [final_response],
                 "features": updated_features
             }
+            if listing_recommendations:
+                return_state["listing_recommendations"] = listing_recommendations
+            return return_state
 
     return {"messages": [response], "features": updated_features}

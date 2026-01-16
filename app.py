@@ -3,6 +3,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from src.graph.workflow import create_graph
 from src.models import PropertyFeatures
 from src.utils.model_downloader import download_models_if_missing, check_models_exist, MODELS
+from src.utils.data_downloader import download_data_if_missing, check_data_files_exist, DATA_FILES
 import pandas as pd
 
 
@@ -57,6 +58,57 @@ def download_missing_models(missing_models: list):
     return success
 
 
+@st.cache_resource(show_spinner=False)
+def ensure_data_downloaded():
+    """
+    Ensure data files are downloaded. This runs once per session.
+    Uses st.cache_resource to avoid re-downloading on every rerun.
+    """
+    data_status = check_data_files_exist()
+    missing_data = [name for name, info in data_status.items() if not info["exists"]]
+
+    if not missing_data:
+        return True, "All data files present"
+
+    return False, missing_data
+
+
+def download_missing_data(missing_files: list):
+    """Download missing data files with Streamlit progress UI."""
+    st.info("🔄 Đang tải dữ liệu BĐS... (chỉ chạy một lần)")
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    total_files = len(missing_files)
+
+    for idx, file_name in enumerate(missing_files):
+        config = DATA_FILES[file_name]
+        status_text.text(f"Đang tải: {config['description']} ({file_name})...")
+
+        def update_progress(name: str, downloaded: int, total: int):
+            if total > 0:
+                file_progress = downloaded / total
+                overall_progress = (idx + file_progress) / total_files
+                progress_bar.progress(overall_progress)
+                size_mb = downloaded / (1024 * 1024)
+                total_mb = total / (1024 * 1024)
+                status_text.text(f"Đang tải {name}: {size_mb:.1f}/{total_mb:.1f} MB")
+
+        success, results = download_data_if_missing(progress_callback=update_progress)
+
+    progress_bar.progress(1.0)
+    status_text.text("✅ Hoàn tất tải dữ liệu!")
+
+    # Clear progress indicators after a moment
+    import time
+    time.sleep(1)
+    progress_bar.empty()
+    status_text.empty()
+
+    return success
+
+
 def extract_message_text(message) -> str:
     """Extract text content from AIMessage, handling both string and list formats."""
     content = message.content
@@ -84,6 +136,14 @@ if not models_ready:
     ensure_models_downloaded.clear()
     st.rerun()
 
+# Check and download data files if needed (runs once per session)
+data_ready, missing_data = ensure_data_downloaded()
+if not data_ready:
+    download_missing_data(missing_data)
+    # Clear cache to re-check after download
+    ensure_data_downloaded.clear()
+    st.rerun()
+
 st.title("🏠 Trợ Lý Bất Động Sản AI")
 
 # Initialize Session State
@@ -97,6 +157,8 @@ if "prediction_result" not in st.session_state:
     st.session_state.prediction_result = None
 if "price_comparison" not in st.session_state:
     st.session_state.price_comparison = None
+if "listing_recommendations" not in st.session_state:
+    st.session_state.listing_recommendations = None
 if "graph" not in st.session_state:
     st.session_state.graph = create_graph()
 if "mode" not in st.session_state:
@@ -132,6 +194,8 @@ with st.sidebar:
             st.session_state.prediction_result = None
         if "price_comparison" in st.session_state:
             st.session_state.price_comparison = None
+        if "listing_recommendations" in st.session_state:
+            st.session_state.listing_recommendations = None
         st.rerun()
 
     st.divider()
@@ -254,6 +318,88 @@ with st.sidebar:
         with st.expander("📝 Chi tiết so sánh", expanded=True):
             st.markdown(comparison.get("comparison_text_vn", ""))
 
+    # Display listing recommendations
+    if st.session_state.listing_recommendations and st.session_state.listing_recommendations.get("success"):
+        recommendations = st.session_state.listing_recommendations
+        listings = recommendations.get("listings", [])
+
+        if listings:
+            st.header("🏘️ BĐS tương tự")
+
+            # Show search criteria
+            criteria = recommendations.get("search_criteria", {})
+            if criteria:
+                with st.expander("📋 Tiêu chí tìm kiếm", expanded=False):
+                    for key, value in criteria.items():
+                        if value:
+                            label_map = {
+                                "khu_vuc": "Khu vực",
+                                "loai_bds": "Loại BĐS",
+                                "gia_muc_tieu": "Giá mục tiêu",
+                                "dien_tich": "Diện tích",
+                                "so_phong_ngu": "Số phòng ngủ"
+                            }
+                            st.markdown(f"**{label_map.get(key, key)}:** {value}")
+
+            # Show relaxation info if any
+            relaxation = recommendations.get("relaxation_applied")
+            if relaxation:
+                st.caption(f"📝 Đã điều chỉnh: {', '.join(relaxation)}")
+
+            # Display each listing
+            for idx, listing in enumerate(listings, 1):
+                # Use subject as title if available
+                subject = listing.get('subject', 'N/A')
+                if subject != 'N/A' and len(subject) > 40:
+                    display_subject = subject[:40] + "..."
+                else:
+                    display_subject = subject
+
+                with st.expander(
+                    f"**{idx}. {display_subject}** | {listing.get('do_tuong_dong', 'N/A')}",
+                    expanded=idx == 1  # Expand first listing by default
+                ):
+                    # Show full subject/title
+                    if subject != 'N/A':
+                        st.markdown(f"**{subject}**")
+
+                    st.markdown(f"📍 **{listing.get('loai_bds', 'BĐS')}** tại **{listing.get('khu_vuc', 'N/A')}**")
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.markdown(f"💰 **Giá:** {listing.get('gia', 'N/A')}")
+                        st.markdown(f"📐 **Diện tích:** {listing.get('dien_tich', 'N/A')}")
+                        if listing.get('so_phong_ngu') != 'N/A':
+                            st.markdown(f"🛏️ **Phòng ngủ:** {listing.get('so_phong_ngu')}")
+                        if listing.get('so_toilet') != 'N/A':
+                            st.markdown(f"🚿 **Toilet:** {listing.get('so_toilet')}")
+
+                    with col2:
+                        if listing.get('so_tang') != 'N/A':
+                            st.markdown(f"🏢 **Số tầng:** {listing.get('so_tang')}")
+                        if listing.get('huong') != 'N/A':
+                            st.markdown(f"🧭 **Hướng:** {listing.get('huong')}")
+                        if listing.get('loai_nha') != 'N/A':
+                            st.markdown(f"🏠 **Loại:** {listing.get('loai_nha')}")
+                        if listing.get('phap_ly') != 'N/A':
+                            st.markdown(f"📋 **Pháp lý:** {listing.get('phap_ly')}")
+
+                    # Similarity score indicator
+                    score = listing.get('similarity_score', 0)
+                    if score >= 70:
+                        st.success(f"⭐ Độ tương đồng: **{listing.get('do_tuong_dong', 'N/A')}**")
+                    elif score >= 50:
+                        st.info(f"⭐ Độ tương đồng: **{listing.get('do_tuong_dong', 'N/A')}**")
+                    else:
+                        st.warning(f"⭐ Độ tương đồng: **{listing.get('do_tuong_dong', 'N/A')}**")
+
+                    # Show URL link if available
+                    if listing.get('url'):
+                        st.markdown(f"🔗 [Xem chi tiết trên Nhà Tốt]({listing.get('url')})")
+
+            st.caption(f"Tìm thấy {len(listings)} BĐS tương tự (khoảng giá ±{recommendations.get('final_price_range_pct', 0)}%)")
+
     # Display unknown fields
     if st.session_state.unknown_fields:
         st.header("Thông tin không rõ")
@@ -296,6 +442,9 @@ if prompt := st.chat_input("Nhập thông tin bất động sản (VD: Nhà ở 
             st.session_state.unknown_fields = response.get('unknown_fields', st.session_state.unknown_fields)
             st.session_state.prediction_result = response.get('prediction_result')
             st.session_state.price_comparison = response.get('price_comparison')
+            # Update listing recommendations if present
+            if response.get('listing_recommendations'):
+                st.session_state.listing_recommendations = response.get('listing_recommendations')
             
             # Display AI response
             last_message = st.session_state.messages[-1]

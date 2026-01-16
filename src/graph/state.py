@@ -52,6 +52,45 @@ class PriceComparison(TypedDict, total=False):
     comparison_text_vn: str  # Giải thích bằng tiếng Việt
 
 
+class ListingRecommendation(TypedDict, total=False):
+    """
+    Kết quả tìm kiếm bất động sản tương tự.
+    """
+    list_id: Optional[int]  # ID tin đăng trên nhatot.com
+    subject: str  # Tiêu đề tin đăng
+    url: Optional[str]  # URL link đến tin đăng (nhatot.com/{list_id}.htm)
+    khu_vuc: str  # Quận/Huyện
+    loai_bds: str  # Loại BĐS
+    gia: str  # Giá đã format (vd: "5.5 tỷ")
+    gia_raw: float  # Giá thô (VNĐ)
+    dien_tich: str  # Diện tích đã format (vd: "100 m²")
+    dien_tich_raw: Optional[float]  # Diện tích thô (m²)
+    so_phong_ngu: str  # Số phòng ngủ
+    so_toilet: str  # Số toilet
+    so_tang: str  # Số tầng
+    tang_so: str  # Tầng số (cho chung cư)
+    huong: str  # Hướng nhà
+    loai_nha: str  # Loại nhà/căn hộ cụ thể
+    phap_ly: str  # Tình trạng pháp lý
+    noi_that: str  # Tình trạng nội thất
+    do_tuong_dong: str  # Độ tương đồng (vd: "85%")
+    similarity_score: float  # Điểm tương đồng (0-100)
+
+
+class ListingSearchResult(TypedDict, total=False):
+    """
+    Kết quả tìm kiếm bất động sản tương tự.
+    """
+    success: bool  # Tìm kiếm thành công hay không
+    mode: str  # "Sell" hoặc "Rent"
+    total_found: int  # Số lượng BĐS tìm được
+    listings: List[ListingRecommendation]  # Danh sách BĐS
+    search_criteria: Dict[str, Any]  # Tiêu chí tìm kiếm
+    relaxation_applied: Optional[List[str]]  # Các tiêu chí đã nới lỏng
+    final_price_range_pct: int  # Khoảng giá cuối cùng (%)
+    message: str  # Thông báo tóm tắt
+
+
 class GraphState(TypedDict):
     """
     Trạng thái của đồ thị quy trình (Graph State).
@@ -64,3 +103,4 @@ class GraphState(TypedDict):
     previous_prediction: Optional[PredictionResult]  # Previous prediction for comparison
     unknown_fields: List[str]  # Track fields user explicitly doesn't know
     price_comparison: Optional[PriceComparison]  # Comparison between predicted and actual price
+    listing_recommendations: Optional[ListingSearchResult]  # Similar listings from database

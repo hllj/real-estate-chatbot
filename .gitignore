@@ -52,6 +52,7 @@ models/*.h5
 # Data (potentially large)
 data/real/
 data/synthetic/*.csv
+data/*.csv
 
 # Logs
 *.log
