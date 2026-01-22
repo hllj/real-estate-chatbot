@@ -426,7 +426,7 @@ def validate_and_normalize_features(
 def predict_price(state: GraphState) -> Dict[str, Any]:
     """
     Node dự đoán giá nếu đủ thông tin quan trọng.
-    Sử dụng predict_with_confidence() để có thêm khoảng tin cậy 95%.
+    Sử dụng predict_with_confidence() để có thêm điểm tin cậy (confidence score).
     Cũng tính toán so sánh giá nếu có cả giá dự đoán và giá thực tế.
     """
     features = state.get('features', PropertyFeatures())
@@ -519,11 +519,10 @@ def chatbot(state: GraphState) -> Dict[str, Any]:
         price = prediction["predicted_price"]
         status_msg += f"\nĐã có dự đoán giá: {price:,.0f} {price_unit}."
 
-        # Show confidence interval if available
-        confidence = prediction.get("confidence_interval_90")
-        if confidence and len(confidence) == 2:
-            lower, upper = confidence
-            status_msg += f"\nKhoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} VNĐ."
+        # Show confidence score if available
+        confidence = prediction.get("confidence")
+        if confidence is not None:
+            status_msg += f"\nĐộ tin cậy: {confidence:.0%}"
 
         # Show SHAP explanation if available
         shap_explanation = prediction.get("shap_explanation")

@@ -1,4 +1,4 @@
-from typing import Annotated, TypedDict, List, Dict, Any, Optional, Tuple, Literal
+from typing import Annotated, TypedDict, List, Dict, Any, Optional, Literal
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 from src.models import PropertyFeatures, ModeType
@@ -33,7 +33,7 @@ class PredictionResult(TypedDict, total=False):
     """
     predicted_price: Optional[float]
     log_price: Optional[float]
-    confidence_interval_90: Optional[Tuple[float, float]]  # (lower, upper) - 90% CI from tree estimators
+    confidence: Optional[float]  # Confidence score (0.0 to 1.0) based on model prediction consistency
     features_used: Optional[Dict[str, Any]]
     shap_explanation: Optional[ShapExplanation]  # SHAP-based price breakdown
     is_fallback: Optional[bool]  # True if using fallback heuristic model

@@ -221,12 +221,6 @@ with st.sidebar:
             price_unit = "VNĐ" if st.session_state.mode == "Sell" else "VNĐ/tháng"
             st.metric("Giá dự đoán", f"{price:,.0f} {price_unit}")
 
-            # Show confidence interval
-            confidence = prediction.get("confidence_interval_90")
-            if confidence and len(confidence) == 2:
-                lower, upper = confidence
-                st.caption(f"Khoảng tin cậy 90%: {lower:,.0f} - {upper:,.0f} {price_unit}")
-
             # Show SHAP explanation
             shap_explanation = prediction.get("shap_explanation")
             if shap_explanation and shap_explanation.get("success"):

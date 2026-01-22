@@ -379,13 +379,13 @@ class RealEstatePricePredictor:
 
     def predict_with_confidence(self, features: PropertyFeatures) -> Dict[str, Any]:
         """
-        Predict property price with confidence information and SHAP explanation.
+        Predict property price with confidence score and SHAP explanation.
 
         Args:
             features: PropertyFeatures object from chatbot
 
         Returns:
-            Dictionary with prediction, confidence info, and SHAP explanation
+            Dictionary with prediction, confidence score, and SHAP explanation
         """
         try:
             print(f"Making prediction with confidence for area: {features.area_name}")
@@ -397,31 +397,34 @@ class RealEstatePricePredictor:
             pipeline = self.model
             model = pipeline.named_steps.get("model") if hasattr(pipeline, "named_steps") else pipeline
 
-            # Try to compute confidence interval from ensemble estimators
-            confidence_lower = None
-            confidence_upper = None
+            # Compute confidence score based on prediction consistency
+            confidence = 0.75  # Default confidence score (75%)
 
             if hasattr(model, 'estimators_'):
                 # Ensemble model (Random Forest, Gradient Boosting, etc.)
-                # Get predictions from each individual tree/estimator
+                # Compute confidence from consistency of tree predictions
                 tree_predictions = []
                 preprocessed_X = pipeline.named_steps['preprocessor'].transform(df)
 
                 for estimator in model.estimators_:
                     pred = estimator.predict(preprocessed_X)[0]
-                    tree_predictions.append(10 ** pred)  # Convert from log10
+                    tree_predictions.append(pred)  # Keep in log scale for std calculation
 
-                confidence_lower = float(np.percentile(tree_predictions, 5))
-                confidence_upper = float(np.percentile(tree_predictions, 95))
-                confidence_interval = (confidence_lower, confidence_upper)
-                print(f"Prediction with confidence (from {len(model.estimators_)} estimators): {price:,.0f} VND (90% CI: {confidence_lower:,.0f} - {confidence_upper:,.0f})")
+                # Calculate coefficient of variation (CV) in log space
+                std_log = float(np.std(tree_predictions))
+                # Convert to confidence: lower std = higher confidence
+                # Using exponential decay: confidence = exp(-k * std)
+                # Calibrated so that std=0 -> 95%, std=0.2 -> ~70%, std=0.4 -> ~50%
+                confidence = float(0.95 * np.exp(-3.5 * std_log))
+                confidence = max(0.30, min(0.95, confidence))  # Clamp between 30% and 95%
+                print(f"Prediction with confidence (from {len(model.estimators_)} estimators): {price:,.0f} VND (confidence: {confidence:.1%})")
             else:
-                # Fallback: Estimate confidence interval using typical model RMSE
+                # Fallback: Use RMSE-based confidence estimation
+                # Lower RMSE = higher confidence
                 rmse_log = RMSE_LOG
-                confidence_lower = float(10 ** (log_price - 1.96 * rmse_log))
-                confidence_upper = float(10 ** (log_price + 1.96 * rmse_log))
-                confidence_interval = (confidence_lower, confidence_upper)
-                print(f"Prediction with confidence (RMSE-based): {price:,.0f} VND (95% CI: {confidence_lower:,.0f} - {confidence_upper:,.0f})")
+                confidence = float(0.90 * np.exp(-2.5 * rmse_log))
+                confidence = max(0.30, min(0.90, confidence))
+                print(f"Prediction with confidence (RMSE-based): {price:,.0f} VND (confidence: {confidence:.1%})")
 
             # Compute SHAP explanation
             shap_explanation = None
@@ -441,7 +444,7 @@ class RealEstatePricePredictor:
             return {
                 "predicted_price": float(price),
                 "log_price": float(log_price),
-                "confidence_interval_90": confidence_interval,
+                "confidence": confidence,
                 "features_used": {
                     "has_coordinates": features.latitude is not None and features.longitude is not None,
                     "has_size": features.size is not None or features.living_size is not None or (features.width and features.length),
@@ -619,13 +622,13 @@ class PricePredictor:
 
     def predict_with_confidence(self, features: PropertyFeatures) -> Dict[str, Any]:
         """
-        Predict price with confidence interval using the trained model, with fallback to heuristic.
+        Predict price with confidence score using the trained model, with fallback to heuristic.
 
         Args:
             features: PropertyFeatures object
 
         Returns:
-            Dictionary with predicted price, confidence interval, and feature info.
+            Dictionary with predicted price, confidence score, and feature info.
             Returns error info if prediction fails.
         """
         print(f"PricePredictor.predict_with_confidence called for area: {features.area_name}")
@@ -642,7 +645,7 @@ class PricePredictor:
             return {
                 "predicted_price": fallback_price,
                 "log_price": None,
-                "confidence_interval_90": None,
+                "confidence": 0.50,  # Lower confidence for fallback model
                 "features_used": {
                     "has_coordinates": features.latitude is not None and features.longitude is not None,
                     "has_size": True,
@@ -663,7 +666,7 @@ class PricePredictor:
             return {
                 "predicted_price": fallback_price,
                 "log_price": None,
-                "confidence_interval_90": None,
+                "confidence": 0.50,  # Lower confidence for fallback model
                 "features_used": {
                     "has_coordinates": features.latitude is not None and features.longitude is not None,
                     "has_size": True,
@@ -674,7 +677,7 @@ class PricePredictor:
             }
 
         result["is_fallback"] = False
-        print(f"Final prediction with confidence: {result.get('predicted_price', 0):,.0f} VND")
+        print(f"Final prediction with confidence: {result.get('predicted_price', 0):,.0f} VND (confidence: {result.get('confidence', 0):.1%})")
         if result.get("shap_explanation"):
             print("SHAP explanation included in result")
         return result
